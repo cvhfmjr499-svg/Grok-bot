@@ -45,5 +45,29 @@
   "ts": 1793222712.2045965,
   "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-18% in 90 min) (Rug-Gefahr)",
   "pnl_pct": -31.5
+ },
+ "EvTeF6WrLC4FYjc28EGjVVcTzW8Z21sutKH31VNEUebW": {
+  "symbol": "HERMIT",
+  "token": "ASX4GtetW337jwG2rLZaU84eY64rRCoWbf63yXQepump",
+  "chain": "solana",
+  "ts": 1793224113.5173693,
+  "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-18% in 90 min) (Rug-Gefahr)",
+  "pnl_pct": -23.8
+ },
+ "E9uQx9CvBiqgW4sXDVLYRLidS6x8rC4JsML3EkBXRLqR": {
+  "symbol": "Chameleon",
+  "token": "Exv4ix6ZjWXexSkf4ZUvUbMcXCoGMksTp1NDG74wpump",
+  "chain": "solana",
+  "ts": 1793224145.6462147,
+  "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-16% in 90 min) (Rug-Gefahr)",
+  "pnl_pct": -8.6
+ },
+ "55w8js7gZC7YRetPxrRLJ97cBqiDKRkwiZw18jJH6kyv": {
+  "symbol": "INVISIBLE",
+  "token": "2HcvsX12NyuLnhDXoU6yWL2XLcr3snCTQ7RhqVmZuCgr",
+  "chain": "solana",
+  "ts": 1793224145.8444035,
+  "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-16% in 90 min) (Rug-Gefahr)",
+  "pnl_pct": -28.5
  }
 }
