@@ -32,12 +32,11 @@ def main():
             browser = p.chromium.launch(channel="chrome")
         except Exception:
             browser = p.chromium.launch(executable_path=os.environ.get("CHROME_PATH"))
-        page = browser.new_page(viewport={"width": 390, "height": 844}, device_scale_factor=2)
+        # breite Ansicht: links Uebersicht, rechts Positionen auf einem Bild
+        page = browser.new_page(viewport={"width": 1180, "height": 1400}, device_scale_factor=1.5)
         page.goto(f"http://127.0.0.1:{srv.server_address[1]}/", wait_until="networkidle")
         time.sleep(4)  # Charts zeichnen lassen
-        height = min(page.evaluate("document.documentElement.scrollHeight"), 2600)
-        page.screenshot(path=os.path.join(OUT, name), full_page=True,
-                        clip={"x": 0, "y": 0, "width": 390, "height": height})
+        page.screenshot(path=os.path.join(OUT, name))
         browser.close()
     srv.shutdown()
     for old in sorted(f for f in os.listdir(OUT) if f.endswith(".png"))[:-KEEP]:

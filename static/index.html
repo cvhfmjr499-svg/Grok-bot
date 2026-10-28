@@ -97,6 +97,22 @@
   .live { white-space: nowrap; }
   .toggle { font-size: 12px; color: var(--muted); font-weight: 500; display: flex; gap: 5px; align-items: center; cursor: pointer; }
   @media (max-width: 520px) { .equity { font-size: 40px; } .agent .nm { width: 96px; } .agent .what { display: none; } }
+  /* Links alles andere, rechts die Positionen (eigene Scroll-Spalte). Schmal (Handy hochkant): wischen oder Tabs. */
+  .wrap { max-width: 1400px; }
+  .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+  .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .col.right { position: sticky; top: 10px; max-height: calc(100vh - 20px); overflow-y: auto; border-radius: 20px; }
+  .poslist { grid-template-columns: 1fr !important; }
+  .tabs { display: none; }
+  @media (max-width: 760px) {
+    .tabs { display: flex; gap: 6px; position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 6px 0 10px; }
+    .tabs button { flex: 1; border: 0; border-radius: 12px; padding: 9px; font: inherit; font-weight: 700; background: var(--card); color: var(--muted); }
+    .tabs button.on { background: var(--text); color: var(--bg); }
+    .split { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 16px; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; scroll-padding: 0 16px; }
+    .split::-webkit-scrollbar { display: none; }
+    .col { flex: 0 0 100%; scroll-snap-align: start; }
+    .col.right { position: static; max-height: none; overflow: visible; }
+  }
 </style>
 </head>
 <body>
@@ -107,7 +123,9 @@
     <div class="pill"><span class="badge">PAPER</span><span class="live"><span class="dot" id="dot"></span><span id="livetxt">Live</span></span></div>
   </header>
 
-  <div class="grid">
+  <nav class="tabs" id="tabs"><button data-p="0" class="on">Übersicht</button><button data-p="1">Positionen <span id="tabcount"></span></button></nav>
+  <div class="split" id="split">
+    <div class="col left">
     <div class="card">
       <div class="eq-label"><span id="eqlabel">Equity</span><span class="mult" id="mult">1.00×</span></div>
       <div class="equity" id="equity">$0<span class="cents">.00</span></div>
@@ -127,10 +145,6 @@
       <div class="agent" id="row-fomo"><div class="ico" style="background:#111;font-weight:800;font-size:13px">FO</div><div class="nm"><b>FOMO</b><span>was FOMO-Nutzer kaufen</span></div><div class="what" id="w-fomo"></div><span class="chip c-blue" id="k-fomo">aus</span></div>
     </div>
 
-    <div class="card full">
-      <h2>Offene Positionen <small id="opensub"></small></h2>
-      <div id="positions"></div>
-    </div>
 
     <div class="card">
       <h2>Activity <label class="toggle"><input type="checkbox" id="hideRej" checked> Ablehnungen ausblenden</label></h2>
@@ -138,25 +152,32 @@
       <div class="scroll" id="activity"></div>
     </div>
 
-    <div class="card full">
+    <div class="card">
       <h2>Warum aussortiert <small id="killsub"></small></h2>
       <div id="kills"></div>
     </div>
 
-    <div class="card full">
+    <div class="card">
       <h2>Dev-Blacklist <small id="blsub"></small></h2>
       <div class="sub" style="margin:-6px 0 6px">Ersteller-Wallets von Coins, die gerugt haben – alle ihre Coins werden gemieden.</div>
       <div id="blacklist"></div>
     </div>
 
-    <div class="card full" id="fomo-card">
+    <div class="card" id="fomo-card">
       <h2>FOMO-Radar <small id="fomosub"></small></h2>
       <div id="fomo-hot"></div>
     </div>
 
-    <div class="card full">
+    <div class="card">
       <h2>Abgeschlossene Trades <small id="closedsub"></small></h2>
       <div class="scroll" id="closed"></div>
+    </div>
+    </div>
+    <div class="col right">
+      <div class="card poscard">
+        <h2>Offene Positionen <small id="opensub"></small></h2>
+        <div id="positions"></div>
+      </div>
     </div>
   </div>
   <div class="note">Paper-Trading mit Spielgeld auf echten DexScreener-Kursen. Slippage und Gebühren sind simuliert, echte Ergebnisse können schlechter ausfallen.</div>
@@ -349,6 +370,7 @@ function render(s) {
     : `<div class="empty">Noch keine FOMO-Käufe erfasst (letzte ${s.config.fomo?.window_minutes ?? 10} min).</div>`;
 
   const maxPos = s.config.sniper.max_open_positions;
+  $("tabcount").textContent = s.positions.length ? `(${s.positions.length})` : "";
   $("opensub").textContent = `${s.positions.length} offen` + (maxPos && maxPos < 100 ? ` / max. ${maxPos}` : " · ohne Limit");
   renderPositions(s);
 
@@ -380,6 +402,15 @@ async function tick() {
 }
 $("hideRej").onchange = tick;
 tick(); setInterval(tick, window.GROKBOT_REFRESH_MS || 1000);  // Sekundentakt (Handy-Seite auf GitHub: seltener)
+</script>
+<script>
+// Tabs fuer das Handy: Uebersicht (links) / Positionen (rechts), auch per Wischen
+(function () {
+  const split = document.getElementById("split"), btns = document.querySelectorAll("#tabs button");
+  const mark = i => btns.forEach((b, j) => b.classList.toggle("on", i === j));
+  btns.forEach(b => b.onclick = () => { const i = +b.dataset.p; split.scrollTo({ left: i * split.clientWidth, behavior: "smooth" }); mark(i); window.scrollTo({ top: 0 }); });
+  split.addEventListener("scroll", () => mark(Math.round(split.scrollLeft / split.clientWidth)), { passive: true });
+})();
 </script>
 </body>
 </html>
