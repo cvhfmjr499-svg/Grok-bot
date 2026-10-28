@@ -29,5 +29,13 @@
   "ts": 1793221502.085136,
   "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-25% in 90 min) (Rug-Gefahr)",
   "pnl_pct": -42.4
+ },
+ "427KdDgBfWZbFy92BEUZk2i8efYy6stxW5JmhtXRgHVp": {
+  "symbol": "EXILE",
+  "token": "8JAPUKQxPKB2FGps1fxTtfpZgXQMgtBhu1HzBrV9Bayo",
+  "chain": "solana",
+  "ts": 1793222236.7225335,
+  "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-20% in 90 min) (Rug-Gefahr)",
+  "pnl_pct": -14.8
  }
 }
