@@ -621,7 +621,15 @@ class Bot:
             try:
                 for agg, unit in ((15, "minute"), (1, "minute")):
                     url = f"{self.gecko}/pools/{pool}/ohlcv/{unit}?aggregate={agg}&limit=1000&currency=usd"
-                    st = chart_stats(gecko_json(url)["data"]["attributes"]["ohlcv_list"])
+                    for attempt in range(3):  # Rate-Limit (429): kurz warten und nochmal
+                        try:
+                            raw = gecko_json(url)
+                            break
+                        except urllib.error.HTTPError as e:
+                            if e.code != 429 or attempt == 2:
+                                raise
+                            time.sleep(4 * (attempt + 1))
+                    st = chart_stats(raw["data"]["attributes"]["ohlcv_list"])
                     if st and st["hours"] >= 3:
                         break  # genug Verlauf; sonst junge Coins mit 1-min-Kerzen genauer ansehen
             except urllib.error.HTTPError as e:
@@ -787,7 +795,7 @@ class Bot:
                 # junge Coins hat GeckoTerminal oft noch nicht erfasst -> dann passen die Live-Rug-Waechter auf;
                 # aeltere Coins ohne pruefbaren Chart werden nicht gekauft
                 if not (reason == "Chart noch zu kurz" and age_min < c.get("chart_optional_below_min", 180)):
-                    return False, reason, dict(info, recheck_min=5)
+                    return False, reason, dict(info, recheck_min=2)
                 info["chart_note"] = "Chart noch zu kurz"
             if not ok:
                 return False, reason, dict(info, recheck_min=1440)
