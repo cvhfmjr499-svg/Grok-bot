@@ -74,8 +74,8 @@
   "symbol": "dood",
   "token": "4oTiM4rdkm3QwnvymYrcn9gCgNyHNFssnAeJxzMQpump",
   "chain": "solana",
-  "ts": 1793224424.3607857,
-  "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-18% in 90 min) (Rug-Gefahr)",
-  "pnl_pct": -6.4
+  "ts": 1793224725.936764,
+  "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-21% in 90 min) (Rug-Gefahr)",
+  "pnl_pct": -11.7
  }
 }
