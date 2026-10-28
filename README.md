@@ -1,1 +1,80 @@
-# Grok-bot
+# Grok Bot – Paper-Trading für Solana-Memecoins
+
+Ein 5-Agenten-Bot wie in den TikTok-Videos, aber **ehrlich**: Er nutzt echte Live-Kurse von DexScreener und echte Rug-Checks von RugCheck. Gehandelt wird nur mit **Spielgeld**. Er braucht keine Wallet, keinen API-Key und kein echtes Geld.
+
+## Diese Version (Challenge Runde 2)
+- **Startkapital: 1.000 € Spielgeld**, Anzeige in Euro (Kurs live von der EZB).
+- **Strategie „Kill-first“** (aus dem Video, in Runde 1 im Plus): kauft nur Coins mit gesperrter Liquidität (≥ 90 %), Top-10-Halter höchstens 30 %, mindestens 40.000 $ Volumen in 24 h, nicht schon +80 % in der letzten Stunde, und nie wieder nach 2 Verlusten mit demselben Coin. 10 % pro Trade, höchstens 6 Coins gleichzeitig. Verkauf: -25 % Stop-Loss (bei Rug-Anzeichen sofort raus), Teilgewinne ab +50 % (siehe unten), Trailing-Stop ab +50 % mit 25 % Abstand.
+- **Optional zweite Strategie „Abschluss+Kill-first“** (`config_abschluss.json`): dieselben Regeln, aber nur für Coins, die gerade die Pump.fun-Bonding-Kurve verlassen.
+- Kurse werden **alle 4 Sekunden** geprüft.
+- **Schutz vor Soft-Rugs:** kein Kauf, wenn Insider-Netzwerke mehr als 10 % halten (RugCheck) oder es in der letzten Stunde mehr als 3× so viele Verkäufe wie Käufe gab.
+- **Dev-Blacklist:** Nach einem Rug wird die Wallet des Erstellers gesperrt (`dev_blacklist.json`). Der Bot kauft nie wieder einen Coin dieser Wallet und verkauft offene Positionen sofort.
+- **Slow-Rugs erkennen:** kein Kauf bei mehr als 2,5× so vielen Verkäufen wie Käufen über 6 Stunden oder wenn die Liquidität in 90 Minuten um 15 % schrumpft. Während der Bot einen Coin hält, verkauft er bei langsamem Abverkauf, abfließender Liquidität oder wenn Insider ihre Bestände abbauen.
+- **Nachkauf, wenn ein Coin gut läuft:** bei +25 %, +50 % und +75 % über dem ersten Kaufpreis kauft der Bot jeweils 25 % des ersten Einsatzes nach (`sniper.pyramid`). Stops und Gewinnmitnahme rechnen danach mit dem Durchschnittspreis.
+- **Gewinner laufen lassen:** keine feste Gewinnmitnahme. Stattdessen Teilgewinne: bei +50 % werden 25 % verkauft, bei +100 % 20 %, danach bei jedem weiteren +50 % wieder 20 % (`risk.partial_tp`). Die Haltezeit gilt nur für Coins im Minus. Der Trailing-Stop greift erst ab +50 % und verkauft, wenn der Coin 25 % vom Höchststand fällt.
+- **Live-Charts:** Jede offene Position hat einen Kerzen-Chart mit TradingViews Chart-Engine (Lightweight Charts), Kurse im Sekundentakt. Die gelbe Linie ist dein Entry (Ø-Kaufpreis) und steigt nach jedem Nachkauf. Pfeile markieren Kauf, Nachkäufe und Teilgewinne. Braucht Internet (die Chart-Bibliothek wird geladen).
+- **Rug selbst melden:** `python3 bot.py --rug <Coin-Adresse>` sperrt die Dev-Wallet dieses Coins.
+- **Kein Positionslimit:** Der Bot kauft jeden Coin, der alle Regeln besteht (5 % pro Trade), solange Geld da ist.
+- **Quellen:** Live-Stream aller neuen Pump.fun-Coins und Abschlüsse, 17 Solana-Launchpads, GeckoTerminal, DexScreener, Jupiter. FOMO ist aus.
+
+## Auf dem iPhone (a-Shell)
+1. ZIP in der App **Dateien** antippen, damit sie entpackt wird.
+2. a-Shell öffnen, `pickFolder` eingeben und den Ordner **grokbot** wählen.
+3. `python3 bot.py --reset` (erster Start mit frischen 1.000 €), später nur `python3 bot.py`.
+   Zweite Strategie: `python3 bot.py --config config_abschluss.json --reset` (eigener Spielstand).
+4. In Safari `localhost:8080` öffnen.
+5. Stoppen: `q` und Enter.
+6. **Neustart: `j` und Enter**, danach nur Enter = Neustart mit deinem Stand (lädt geänderte `config.json` neu), oder `n` und Enter = komplett neu mit frischem Startkapital.
+
+## Auf GitHub (läuft ohne Handy und PC)
+- **GitHub Actions** (`.github/workflows/bot-run.yml`) startet den Bot automatisch. Jeder Lauf dauert ca. 55 Minuten, danach startet sofort der nächste. Alle 3 Minuten speichert er seinen Stand (`state.json`, `dev_blacklist.json`) im Repo.
+- **Handy-Seite:** https://cvhfmjr499-svg.github.io/Grok-Bot/ (GitHub Pages aus dem Ordner `docs/`). Sie zeigt den gespeicherten Stand, also mit bis zu ca. 3–5 Minuten Verzögerung, und lädt sich alle 15 Sekunden neu.
+- **Einstellungen ändern:** `config.json` im Repo bearbeiten. Der nächste Lauf übernimmt sie.
+- **Neu starten mit 1.000 €:** `state.json` im Repo löschen.
+- **Anhalten:** auf GitHub unter Actions → „Grok Bot (Dauerbetrieb)“ → „…“ → „Disable workflow“.
+
+## Starten
+
+Voraussetzung ist Python 3.9 oder neuer. Zusätzliche Pakete braucht man nicht.
+
+```bash
+python3 bot.py            # Dashboard: http://localhost:8080
+python3 bot.py --reset    # Neustart mit frischem Startkapital
+python3 bot.py --host 0.0.0.0 --port 8080   # vom Handy im selben WLAN aufrufbar
+```
+
+Stoppen: `q` eintippen und Enter drücken (auf dem PC geht auch `Strg+C`). Der Stand liegt in `state.json` und wird beim nächsten Start fortgesetzt.
+
+## Die 5 Agenten
+
+| Agent   | Aufgabe |
+|---------|---------|
+| Scout   | Holt alle 20 s neue Solana-Coins: DexScreener (neue Profile, Boosts, Community-Takeovers) und GeckoTerminal (brandneue und trendende Pools, ca. 20 neue pro Minute, dazu reihum die aktivsten Pools von Pump.fun, PumpSwap, StonkFun, LetsBonk, Bags, Raydium LaunchLab, Boop und Moonit). Coins, die nur „zu jung“ sind, kommen auf eine Beobachtungsliste. Abgelehnte Coins werden je nach Grund erst nach 10 min bis 7 Tagen erneut geprüft. |
+| Analyst | Filtert nach Liquidität, Alter, Volumen, Marktkapitalisierung und Käufer/Verkäufer-Verhältnis, sortiert bereits gepumpte Tokens aus und macht einen RugCheck (Score, „danger“-Risiken). |
+| Sniper  | Kauft mit x % des Kapitals. Slippage (abhängig von der Liquidität) und Gebühren werden simuliert. |
+| Risk    | Prüft alle 8 s die Kurse: Stop-Loss, Trailing-Stop, Take-Profit, maximale Haltezeit und Notausstieg, falls die Liquidität abgezogen wird (Rug). |
+| Banker  | Verkauft und verbucht Gewinn oder Verlust nach Slippage und Gebühren. |
+| FOMO    | Liest live die Trades der FOMO-App von der Solana-Blockchain. Alle FOMO-Trades werden von der FOMO-Wallet `AgmLJBMD…zN51` mitsigniert, der zweite Signer ist der Nutzer. Kaufen mindestens `min_wallets` verschiedene FOMO-Nutzer innerhalb von `window_minutes` denselben Coin, prüft der Analyst ihn sofort. |
+
+## Einstellungen (`config.json`)
+
+- `start_balance_usd`: Startkapital (Spielgeld)
+- `analyst.*`: Filterregeln. Strenger heißt weniger, aber sicherere Trades.
+- `sniper.position_pct_of_equity`, `max_open_positions`: Positionsgröße und Anzahl gleichzeitiger Positionen
+- `risk.*`: Stop-Loss, Trailing-Stop, Take-Profit, Haltezeit
+- `start_kapital_eur`: Startkapital in Euro (wirkt nach `--reset`); `anzeige_waehrung`: `"EUR"` oder `"USD"`
+- `analyst.min_organic_score`: nur Coins mit mindestens diesem Jupiter Organic Score kaufen (0–100, 0 = aus). Hoch = echter Handel, niedrig = viel Bot-Handel.
+- `jupiter.enabled`: Jupiter als Quelle an/aus (nur Solana)
+- `chain`: `solana`, `bsc`, `base` oder `robinhood`
+- `pumpportal.enabled`: Live-Stream neuer Pump.fun-Coins an/aus (nur Solana); `gecko_new_pages`: wie viele Seiten neuer Pools pro Minute
+- Kill-first-Regeln: `analyst.min_volume_h24_usd`, `analyst.max_top10_pct` (Top-10-Halter), `analyst.min_lp_locked_pct`, `analyst.max_losses_per_token`, `analyst.max_tax_pct` (EVM)
+- `fomo.enabled`: FOMO-Agent an/aus; `fomo.min_wallets`: ab wie vielen FOMO-Käufern ein Coin geprüft wird
+- `fomo.rpc_url`: Solana-RPC. Der kostenlose öffentliche RPC ist streng limitiert, deshalb wertet der Bot nur einen Teil der FOMO-Trades aus (etwa 10 %). Mit einem eigenen kostenlosen RPC-Zugang (z. B. von Helius) kannst du `tx_per_cycle` erhöhen.
+
+Nach einer Änderung den Bot neu starten. Mit `--reset` beginnt der Test sauber von vorn.
+
+## Wichtig
+
+- Lass den Bot **mehrere Tage** laufen, bevor du die Ergebnisse bewertest. Ein paar Gewinne in der ersten Stunde sagen nichts aus.
+- Paper-Ergebnisse sind **zu optimistisch**: Echte Fills sind langsamer, MEV-Bots springen vor deine Order, manche Tokens lassen sich gar nicht verkaufen (Honeypots), und DexScreener-Kurse kommen leicht verzögert.
+- Die Gewinne aus den Videos (z. B. 4,9× in 25 Sekunden) waren laut „SIM“-Anzeige simuliert. Echte Memecoin-Bots verlieren oft Geld.

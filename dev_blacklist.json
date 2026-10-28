@@ -1,0 +1,25 @@
+{
+ "77mR72zxDD4ebPnLHNuNLwUhwF4a3oNBS6cTZ5ztWDo3": {
+  "symbol": "N64",
+  "token": "9uGqEsc5Sh9GBjvLr7jUf7PyY9tDZhiV7kCdyM7Wpump",
+  "chain": "solana",
+  "ts": 1793210162.1227636,
+  "reason": "Liquiditaet -89% (Rug-Gefahr)",
+  "pnl_pct": -97.4
+ },
+ "7wRSnvVKG1fPiYMcTVpQhxCRptf5khvLcwVXPqBa3s9C": {
+  "symbol": "REMUS",
+  "token": "CA8q2mkYWZnUNqYmf6pxyxAPZsmSe2EG9P7hHMW5pump",
+  "chain": "solana",
+  "ts": 1793210314.135292,
+  "reason": "vom Nutzer gemeldet: Soft-Rug (Insider 15 %, 15x Verkaeufe)"
+ },
+ "EAJStF1Rs3aXojYwHaYmrMg7sAgsyg9YjgAuEoNGUToM": {
+  "symbol": "paws",
+  "token": "Fp4JkqEcKYKBKhb9iMu9NSDeo71HWgq2q9QtXaaKpump",
+  "chain": "solana",
+  "ts": 1793213138.0112052,
+  "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-16% in 90 min) (Rug-Gefahr)",
+  "pnl_pct": -13.3
+ }
+}

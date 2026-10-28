@@ -1,0 +1,48 @@
+name: Grok Bot (Dauerbetrieb)
+
+# Jeder Lauf dauert ca. 55 Minuten. Der Zeitplan startet alle 15 Minuten einen neuen Lauf; durch die
+# concurrency-Gruppe wartet er, bis der vorige fertig ist. So laeuft der Bot praktisch ohne Pause.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: grok-bot
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 62
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Bot laufen lassen und Stand regelmaessig speichern
+        run: |
+          git config user.name "Grok Bot (GitHub)"
+          git config user.email "bot@local"
+          python scripts/build_docs.py
+          save() {
+            git add state.json dev_blacklist.json docs 2>/dev/null || true
+            git diff --cached --quiet && return 0
+            git commit -q -m "Bot-Lauf: Stand $(date -u +%H:%M) UTC"
+            for attempt in 1 2 3; do
+              git pull -q --rebase -X theirs origin main && git push -q origin main && return 0
+              sleep 5
+            done
+            echo "Push fehlgeschlagen, naechster Versuch beim naechsten Speichern"
+          }
+          python bot.py --headless --minutes 55 --export docs/data/state.json --export-every 20 &
+          BOT=$!
+          while kill -0 $BOT 2>/dev/null; do
+            sleep 180
+            save
+          done
+          wait $BOT || true
+          save

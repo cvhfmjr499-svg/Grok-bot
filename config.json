@@ -1,0 +1,110 @@
+{
+  "chain": "solana",
+  "start_kapital_eur": 1000,
+  "anzeige_waehrung": "EUR",
+  "usd_pro_eur": 1.115,
+  "start_balance_usd": 1113.3,
+  "goal_multiple": 2.0,
+  "scout_interval_s": 20,
+  "risk_interval_s": 1,
+  "analyst": {
+    "min_liquidity_usd": 15000,
+    "max_liquidity_usd": 2000000,
+    "min_age_minutes": 10,
+    "max_age_hours": 168,
+    "min_volume_h1_usd": 1000,
+    "min_mcap_usd": 10000,
+    "max_mcap_usd": 50000000.0,
+    "min_buys_h1": 5,
+    "min_buy_sell_ratio_h1": 0,
+    "min_change_h1_pct": -1000,
+    "max_change_m5_pct": 25,
+    "max_change_h1_pct": 80,
+    "use_rugcheck": true,
+    "max_rugcheck_score_normalised": 40,
+    "reject_danger_risks": true,
+    "min_lp_locked_pct": 90,
+    "min_organic_score": 0,
+    "min_volume_h24_usd": 40000,
+    "max_top10_pct": 30,
+    "max_losses_per_token": 2,
+    "use_goplus": true,
+    "max_tax_pct": 10,
+    "use_dev_blacklist": true,
+    "max_insider_pct": 10,
+    "max_sell_buy_ratio_h1": 3,
+    "max_sell_buy_ratio_h6": 2.5,
+    "max_liq_shrink_pct_90m": 15
+  },
+  "sniper": {
+    "position_pct_of_equity": 5,
+    "max_position_usd": 500,
+    "min_position_usd": 5,
+    "max_open_positions": 0,
+    "base_slippage_pct": 0.5,
+    "fee_pct_per_side": 0.3,
+    "network_fee_usd": 0.05,
+    "cooldown_minutes_per_token": 120,
+    "pyramid": {
+      "enabled": true,
+      "step_pct": 25,
+      "add_pct_of_first": 25,
+      "max_adds": 3
+    }
+  },
+  "risk": {
+    "stop_loss_pct": 25,
+    "take_profit_pct": 0,
+    "trailing_activate_pct": 50,
+    "trailing_distance_pct": 25,
+    "max_hold_minutes": 90,
+    "exit_if_liquidity_drops_pct": 25,
+    "rugwatch": {
+      "enabled": true,
+      "sell_buy_ratio_m5": 5,
+      "min_sells_m5": 30,
+      "recheck_minutes": 10,
+      "max_insider_pct": 15,
+      "sell_buy_ratio_h6": 2.5,
+      "liq_drain_pct_90m": 15,
+      "insider_dump_pts": 1.5
+    },
+    "partial_tp": {
+      "enabled": true,
+      "levels": [
+        [
+          50,
+          25
+        ],
+        [
+          100,
+          20
+        ]
+      ],
+      "then_every_pct": 50,
+      "then_sell_pct": 20
+    },
+    "hold_only_if_losing": true
+  },
+  "fomo": {
+    "enabled": false,
+    "min_wallets": 3,
+    "window_minutes": 10,
+    "poll_interval_s": 15,
+    "tx_per_cycle": 15,
+    "rpc_delay_s": 0.4,
+    "rpc_url": "https://api.mainnet-beta.solana.com"
+  },
+  "jupiter": {
+    "enabled": true
+  },
+  "gecko_new_pages": 3,
+  "pumpportal": {
+    "enabled": true,
+    "watch_minutes": 60,
+    "first_check_minutes": 5
+  },
+  "dev_blacklist": {
+    "rug_loss_pct": 40
+  }
+}
