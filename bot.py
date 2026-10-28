@@ -236,6 +236,7 @@ class Bot:
         self.state_path = state_path
         self.name = name
         self.lock = threading.RLock()
+        self.save_lock = threading.Lock()
         self.stop_event = threading.Event()
         self.activity = deque(maxlen=200)
         self.first_seen = {}      # token -> erstmals gesehen (ts)
@@ -307,10 +308,12 @@ class Bot:
                 "token_losses": self.token_losses,
                 "started_at": self.started_at, "start_balance_usd": self.cfg["start_balance_usd"],
             }
-        tmp = self.state_path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(s, f)
-        os.replace(tmp, self.state_path)
+        # mehrere Threads speichern -> eigene Zwischendatei je Thread und nacheinander ersetzen (sonst FileNotFoundError)
+        with self.save_lock:
+            tmp = f"{self.state_path}.{threading.get_ident()}.tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(s, f)
+            os.replace(tmp, self.state_path)
 
     # ---------- Hilfen ----------
     def log(self, agent, msg, kind="info"):
@@ -1309,9 +1312,12 @@ def run_headless(cfg, state_path, args):
     try:
         while now() < end:
             time.sleep(min(args.export_every, max(end - now(), 0.1)))
-            bot.save_state()
-            if args.export:
-                export_snapshot(bot, args.export)
+            try:
+                bot.save_state()
+                if args.export:
+                    export_snapshot(bot, args.export)
+            except Exception as e:  # ein Fehler beim Speichern darf den Lauf nicht beenden
+                bot.log("system", f"Speichern fehlgeschlagen: {e}", "error")
     except KeyboardInterrupt:
         pass
     finally:
