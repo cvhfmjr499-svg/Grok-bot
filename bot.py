@@ -330,6 +330,7 @@ class Bot:
         self.equity_history = []  # [ts, equity], fein: letzte 2 h
         self.equity_long = []  # [ts, equity], alle 5 min, 60 Tage
         self.chart_cache = {}  # Pool -> (Zeit, chart_stats)
+        self.chart_exit = {}  # Token -> Verkaufsgrund aus dem Chart-Check gehaltener Coins
         self.load_state()
 
     # ---------- Persistenz ----------
@@ -620,6 +621,38 @@ class Bot:
         if lp_locked < c.get("min_lp_locked_pct", 0):
             return False, f"LP nur {lp_locked:.0f}% gesperrt", dict(extra, recheck_min=60)
         return True, "ok", extra
+
+    def chart_watch_loop(self):
+        """Gehaltene Coins alle 30 min mit dem kompletten Chart pruefen (eigener Thread, GeckoTerminal ist langsam).
+        Rug-Kerze (-90 % in einer Kerze) -> sofort raus und Dev sperren. Toter Coin -> raus, aber nur wenn er im Minus ist."""
+        while not self.stop_event.is_set():
+            c = self.cfg["analyst"]
+            if c.get("chart_check", True) and self.cfg["risk"].get("chart_watch_minutes", 30):
+                with self.lock:
+                    due = [(t, p.get("pair"), p["symbol"]) for t, p in self.positions.items()
+                           if now() - p.get("chart_checked_at", 0) >= self.cfg["risk"].get("chart_watch_minutes", 30) * 60]
+                for token, pool, sym in due:
+                    if self.stop_event.is_set() or not pool:
+                        break
+                    ok, reason, st = self.chart_check({"pairAddress": pool}, c)
+                    with self.lock:
+                        pos = self.positions.get(token)
+                        if not pos:
+                            continue
+                        if ok is None and reason == "Chart nicht abrufbar":
+                            continue  # spaeter nochmal
+                        pos["chart_checked_at"] = now()
+                        if st:
+                            pos.setdefault("info", {})["chart"] = st
+                        if ok is False:
+                            losing = pos["last_price"] < pos["entry_price"]
+                            if reason.startswith("Rug im Chart"):
+                                self.rug_alarm.setdefault(token, reason)
+                            elif losing:
+                                self.chart_exit[token] = f"Chart-Check: {reason}"
+                            else:
+                                self.log("risk", f"${sym}: {reason}, aber im Plus -> gehalten", "info")
+            self.stop_event.wait(60)
 
     def chart_check(self, pair, c):
         """Kompletten Chart pruefen (15-min-Kerzen seit Start, bei jungen Coins 1-min-Kerzen).
@@ -972,6 +1005,10 @@ class Bot:
                         liq_drop = (1 - pos["last_depth"] / pos["entry_depth"]) * 100  # abgezogene Liquiditaet seit Kauf
                     else:
                         liq_drop = 0
+                    # nach dem ersten Teilgewinn enger absichern, damit vom Gewinn mehr uebrig bleibt
+                    trail_dist = r["trailing_distance_pct"]
+                    if r.get("trailing_distance_after_tp_pct") and (pos.get("partial_level", 0) >= 1 or pos.get("partial_done")):
+                        trail_dist = r["trailing_distance_after_tp_pct"]
                     reason = None
                     dev = self.creators.get(token)
                     if dev and dev in self.blacklist:
@@ -984,9 +1021,11 @@ class Bot:
                         reason = f"Stop-Loss {pnl:+.1f}%"
                     elif r.get("take_profit_pct") and pnl >= r["take_profit_pct"]:
                         reason = f"Take-Profit {pnl:+.1f}%"
-                    elif peak_pnl >= r["trailing_activate_pct"] and price <= peak * (1 - r["trailing_distance_pct"] / 100):
-                        reason = f"Trailing-Stop (Hoch {peak_pnl:+.0f}%, jetzt {pnl:+.0f}%)"
-                    elif held_min >= r["max_hold_minutes"] and (pnl < 0 or not r.get("hold_only_if_losing")):
+                    elif token in self.chart_exit:
+                        reason = self.chart_exit.pop(token)
+                    elif peak_pnl >= r["trailing_activate_pct"] and price <= peak * (1 - trail_dist / 100):
+                        reason = f"Trailing-Stop (Hoch {peak_pnl:+.0f}%, jetzt {pnl:+.0f}%, Abstand {trail_dist:.0f}%)"
+                    elif r.get("max_hold_minutes") and held_min >= r["max_hold_minutes"] and (pnl < 0 or not r.get("hold_only_if_losing")):
                         reason = f"Haltezeit {held_min:.0f} min abgelaufen"
                 if reason:
                     self.sell(token, reason)
@@ -1368,7 +1407,7 @@ class Bot:
             self.stop_event.wait(self.cfg["risk_interval_s"])
 
     def start(self):
-        for fn in (self.scout_loop, self.risk_loop, self.fomo_loop, self.stream_loop):
+        for fn in (self.scout_loop, self.risk_loop, self.fomo_loop, self.stream_loop, self.chart_watch_loop):
             threading.Thread(target=fn, daemon=True).start()
         if os.environ.get("GITHUB_REPOSITORY") and os.environ.get("GITHUB_TOKEN"):
             threading.Thread(target=self.github_reports_loop, daemon=True).start()

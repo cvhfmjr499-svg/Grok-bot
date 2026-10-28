@@ -83,7 +83,7 @@
     "take_profit_pct": 0,
     "trailing_activate_pct": 50,
     "trailing_distance_pct": 25,
-    "max_hold_minutes": 90,
+    "max_hold_minutes": 0,
     "exit_if_liquidity_drops_pct": 25,
     "rugwatch": {
       "enabled": true,
@@ -111,7 +111,9 @@
       "then_every_pct": 50,
       "then_sell_pct": 20
     },
-    "hold_only_if_losing": true
+    "hold_only_if_losing": true,
+    "trailing_distance_after_tp_pct": 15,
+    "chart_watch_minutes": 30
   },
   "fomo": {
     "enabled": false,
