@@ -37,5 +37,13 @@
   "ts": 1793222236.7225335,
   "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-20% in 90 min) (Rug-Gefahr)",
   "pnl_pct": -14.8
+ },
+ "DPQoxAKKrCtjfZ577QyrKBCfXy8KhJxRcxj6awgbBWYw": {
+  "symbol": "MIKA",
+  "token": "F5v2odurfbucdViokrzwYNczrrTZuvHhnY8ofRU2pump",
+  "chain": "solana",
+  "ts": 1793222712.2045965,
+  "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-18% in 90 min) (Rug-Gefahr)",
+  "pnl_pct": -31.5
  }
 }
