@@ -43,7 +43,7 @@ jobs:
           python bot.py --headless --minutes 55 --export docs/data/state.json --export-every 20 &
           BOT=$!
           while kill -0 $BOT 2>/dev/null; do
-            sleep 180
+            sleep 60
             save
           done
           wait $BOT || true
