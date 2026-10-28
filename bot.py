@@ -1182,6 +1182,59 @@ class Bot:
     def start(self):
         for fn in (self.scout_loop, self.risk_loop, self.fomo_loop, self.stream_loop):
             threading.Thread(target=fn, daemon=True).start()
+        if os.environ.get("GITHUB_REPOSITORY") and os.environ.get("GITHUB_TOKEN"):
+            threading.Thread(target=self.github_reports_loop, daemon=True).start()
+
+    def report_rug(self, token, who="dir"):
+        """Coin von Hand als Rug melden: Dev-Wallet sperren und offene Position sofort verkaufen. -> Text fuer die Antwort."""
+        token = (token or "").strip()
+        if not re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]{32,44}|0x[0-9a-fA-F]{40}", token):
+            return False, "Das ist keine gueltige Coin-Adresse."
+        with self.lock:
+            pos = self.positions.get(token)
+            sym = pos["symbol"] if pos else token[:6]
+            if pos:
+                self.rug_alarm[token] = f"von {who} als Rug gemeldet"  # Risk verkauft beim naechsten Durchlauf (1 s)
+        dev = self.creator_of(token)
+        msg = f"${sym}: " + ("Position wird sofort verkauft. " if pos else "keine offene Position. ")
+        if dev:
+            added = dev_blacklist_add(self.blacklist_path, dev, {"symbol": sym, "token": token, "chain": self.chain,
+                                                                  "ts": now(), "reason": f"von {who} als Rug gemeldet"})
+            msg += f"Dev-Wallet {dev[:6]}...{dev[-4:]} " + ("gesperrt." if added else "war schon gesperrt.")
+        else:
+            msg += "Dev-Wallet nicht gefunden (RugCheck kennt den Coin nicht)."
+        self.log("analyst", f"RUG GEMELDET {msg}", "warn")
+        return True, msg
+
+    def github_reports_loop(self):
+        """Auf GitHub (Actions): Rug-Meldungen von der Handy-Seite kommen als Issue "RUG <Adresse>".
+        Nur Meldungen des Repo-Besitzers zaehlen; danach antwortet der Bot im Issue und schliesst es."""
+        repo, tok = os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_TOKEN"]
+        owner = repo.split("/")[0].lower()
+        api = f"https://api.github.com/repos/{repo}/issues"
+
+        def call(url, data=None, method="GET"):
+            req = urllib.request.Request(url, data=json.dumps(data).encode() if data is not None else None, method=method,
+                                         headers={"Authorization": f"Bearer {tok}", "Accept": "application/vnd.github+json",
+                                                  "User-Agent": "grokbot-paper/1.0"})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                return json.loads(r.read().decode() or "null")
+
+        while not self.stop_event.is_set():
+            try:
+                for issue in call(api + "?state=open&per_page=30"):
+                    title = (issue.get("title") or "").strip()
+                    if issue.get("pull_request") or not title.upper().startswith("RUG"):
+                        continue
+                    if (issue.get("user") or {}).get("login", "").lower() != owner:
+                        continue  # fremde Meldungen ignorieren (oeffentliches Repo)
+                    m = re.search(r"[1-9A-HJ-NP-Za-km-z]{32,44}|0x[0-9a-fA-F]{40}", title + " " + (issue.get("body") or ""))
+                    ok, msg = self.report_rug(m.group(0) if m else "", "dir (Handy)")
+                    call(f"{api}/{issue['number']}/comments", {"body": ("✅ " if ok else "⚠️ ") + msg}, "POST")
+                    call(f"{api}/{issue['number']}", {"state": "closed"}, "PATCH")
+            except Exception as e:
+                self.log("system", f"Rug-Meldungen von GitHub nicht lesbar: {e}", "error")
+            self.stop_event.wait(30)
 
     # ---------- Dashboard-Daten ----------
     def snapshot(self):
@@ -1308,6 +1361,19 @@ class Handler(BaseHTTPRequestHandler):
             self.send(404, b"not found", "text/plain")
 
 
+    def do_POST(self):
+        if self.path.startswith("/api/rug"):
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                token = json.loads(self.rfile.read(min(n, 4096)) or b"{}").get("token", "")
+            except Exception:
+                token = ""
+            ok, msg = self.bot.report_rug(token)
+            self.send(200 if ok else 400, json.dumps({"ok": ok, "msg": msg}).encode(), "application/json")
+        else:
+            self.send(404, b"not found", "text/plain")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Grok Bot - Paper-Trading fuer Solana-Memecoins")
     ap.add_argument("--port", type=int, default=8080)
@@ -1335,14 +1401,8 @@ def main():
         os.remove(state_path)
 
     if args.rug:
-        b = Bot(cfg, state_path)
-        dev = b.creator_of(args.rug)
-        if not dev:
-            print("Dev-Wallet nicht gefunden (Adresse richtig? Internet an?)")
-            return
-        added = dev_blacklist_add(b.blacklist_path, dev, {"symbol": args.rug[:6], "token": args.rug, "chain": b.chain,
-                                                         "ts": now(), "reason": "von Hand als Rug gemeldet"})
-        print(f"Dev-Wallet {dev} {'gesperrt' if added else 'war schon gesperrt'}. Der Bot meidet ihre Coins und verkauft offene Positionen.")
+        ok, msg = Bot(cfg, state_path).report_rug(args.rug)
+        print(msg + (" Der Bot meidet kuenftig ihre Coins und verkauft offene Positionen." if ok else ""))
         return
 
     if args.headless:

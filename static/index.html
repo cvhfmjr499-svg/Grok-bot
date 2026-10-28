@@ -113,6 +113,8 @@
     .col { flex: 0 0 100%; scroll-snap-align: start; }
     .col.right { position: static; max-height: none; overflow: visible; }
   }
+  .rugbtn { border: 1px solid var(--red); color: var(--red); background: var(--red-bg); border-radius: 10px; padding: 4px 10px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+  .rugbtn:disabled { opacity: .5; }
 </style>
 </head>
 <body>
@@ -247,7 +249,7 @@ function cardInfo(p) {
   return `<div class="meta"><span>Kauf bei MCap <b>${mc(p.entry_mcap)}</b></span><span>jetzt ${mc(p.last_mcap)}</span></div>
     <div class="meta"><span>Entry <b style="color:#f5b301">${fmtPrice(p.entry_price)}</b>${p.adds ? " (Ø nach " + p.adds + " Nachkauf" + (p.adds > 1 ? "en" : "") + (p.dip_adds ? ", davon " + p.dip_adds + " Dip" : "") + ")" : ""}</span><span>Hoch ${pct(p.peak_pct)} · ${ago(p.held_min)}</span></div>
     <div class="meta"><span>${usd(p.cost_usd)} → ${usd(p.value_usd)}</span><span>${p.partial_done ? p.partial_level + "× Gewinn gesichert (" + usd(p.realized_usd) + ")" : ""}</span></div>
-    <div class="meta"><a class="tv" href="${esc(p.url)}" target="_blank" rel="noopener">TradingView-Chart auf DexScreener ↗</a><span></span></div>`;
+    <div class="meta"><a class="tv" href="${esc(p.url)}" target="_blank" rel="noopener">Chart auf DexScreener ↗</a><button class="rugbtn" data-token="${esc(p.token)}" data-sym="${esc(p.symbol)}">🚩 Rug melden</button></div>`;
 }
 function renderPositions(s) {
   const box = $("positions");
@@ -411,6 +413,26 @@ tick(); setInterval(tick, window.GROKBOT_REFRESH_MS || 1000);  // Sekundentakt (
   btns.forEach(b => b.onclick = () => { const i = +b.dataset.p; split.scrollTo({ left: i * split.clientWidth, behavior: "smooth" }); mark(i); window.scrollTo({ top: 0 }); });
   split.addEventListener("scroll", () => mark(Math.round(split.scrollLeft / split.clientWidth)), { passive: true });
 })();
+</script>
+<script>
+// Rug melden: lokal direkt an den Bot, auf GitHub Pages ueber ein vorausgefuelltes GitHub-Issue (der Bot liest es in ~30 s)
+document.getElementById("positions").addEventListener("click", async ev => {
+  const btn = ev.target.closest(".rugbtn");
+  if (!btn) return;
+  const token = btn.dataset.token, sym = btn.dataset.sym;
+  if (!confirm(`$${sym} als Rug melden?\n\nDer Bot verkauft die Position sofort und sperrt die Dev-Wallet für immer.`)) return;
+  if (window.GROKBOT_REPO) {
+    const body = `Rug gemeldet über die Handy-Seite.\n\nCoin: $${sym}\nAdresse: ${token}\n\nEinfach auf "Create" / "Submit new issue" tippen. Der Bot verkauft innerhalb von ca. 30 Sekunden und antwortet hier.`;
+    window.open(`https://github.com/${window.GROKBOT_REPO}/issues/new?title=${encodeURIComponent("RUG " + token)}&body=${encodeURIComponent(body)}`, "_blank");
+    return;
+  }
+  btn.disabled = true;
+  try {
+    const r = await fetch("/api/rug", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) });
+    alert((await r.json()).msg);
+  } catch (e) { alert("Melden fehlgeschlagen: " + e); }
+  btn.disabled = false;
+});
 </script>
 </body>
 </html>

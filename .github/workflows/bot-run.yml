@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  issues: write  # Rug-Meldungen von der Handy-Seite (Issue "RUG <Adresse>") lesen, beantworten, schliessen
 
 concurrency:
   group: grok-bot
@@ -26,6 +27,8 @@ jobs:
       - name: Playwright fuer Screenshots (nutzt das vorinstallierte Chrome)
         run: pip install -q playwright
       - name: Bot laufen lassen und Stand regelmaessig speichern
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           git config user.name "Grok Bot (GitHub)"
           git config user.email "bot@local"
