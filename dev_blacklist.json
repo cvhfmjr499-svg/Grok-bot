@@ -21,5 +21,13 @@
   "ts": 1793213138.0112052,
   "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-16% in 90 min) (Rug-Gefahr)",
   "pnl_pct": -13.3
+ },
+ "5DrsWQkRs74ywDmtiATjp3BMs3zw6p5vU9kGuUAQxb7v": {
+  "symbol": "PlasticInu",
+  "token": "FxZk7hfJawUBphkW4LgYMkQZsAVvA4bnYFPx3hBmiMb3",
+  "chain": "solana",
+  "ts": 1793221502.085136,
+  "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-25% in 90 min) (Rug-Gefahr)",
+  "pnl_pct": -42.4
  }
 }
