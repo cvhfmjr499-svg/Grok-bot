@@ -50,6 +50,19 @@
       "step_pct": 25,
       "add_pct_of_first": 25,
       "max_adds": 3
+    },
+    "dip_buy": {
+      "enabled": true,
+      "candle_drop_pct": 6,
+      "window_s": 120,
+      "min_below_entry_pct": 8,
+      "max_below_entry_pct": 18,
+      "add_pct_of_first": 25,
+      "max_adds": 2,
+      "min_gap_s": 180,
+      "min_buy_sell_ratio_m5": 0.8,
+      "max_liq_drop_pct": 10,
+      "reserve_pct": 15
     }
   },
   "risk": {

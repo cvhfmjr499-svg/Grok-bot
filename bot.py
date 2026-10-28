@@ -694,6 +694,10 @@ class Bot:
                 self.log("sniper", f"${sym} uebersprungen - Coin mit gleichem Namen schon offen (Nachahmer?)", "warn")
                 return
             size = min(self.equity() * s["position_pct_of_equity"] / 100, s["max_position_usd"], self.cash - 1)
+            dip = s.get("dip_buy", {})
+            if dip.get("enabled") and dip.get("reserve_pct"):
+                # einen Teil des Geldes fuer Dip-Kaeufe offener Positionen frei halten
+                size = min(size, self.cash - 1 - self.equity() * dip["reserve_pct"] / 100)
             if size < s["min_position_usd"]:
                 self.log("sniper", f"${sym} uebersprungen - zu wenig Cash", "warn")
                 return
@@ -789,6 +793,9 @@ class Bot:
                     pyr = self.cfg["sniper"].get("pyramid", {})
                     if p and pyr.get("enabled"):
                         self.pyramid_add(token, pos, pyr)
+                    dip = self.cfg["sniper"].get("dip_buy", {})
+                    if p and dip.get("enabled"):
+                        self.dip_add(token, pos, dip, (p.get("txns") or {}).get("m5") or {})
                     ptp = r.get("partial_tp", {})
                     if p and ptp.get("enabled"):
                         self.partial_take_profit(token, pos, ptp)
@@ -844,6 +851,47 @@ class Bot:
         pos.setdefault("entry_hist", [[pos["opened_at"], first_price]]).append([now(), pos["entry_price"]])
         pos.setdefault("events", []).append([now(), f"Nachkauf {adds + 1}", fill])
         self.log("sniper", f"NACHKAUF ${pos['symbol']} fuer ${size:,.2f} bei +{gain:.0f}% (Nachkauf {adds + 1}, MCap ${pos.get('last_mcap') or 0:,.0f})", "buy")
+
+    def dip_add(self, token, pos, dip, m5):
+        """Dip-Kauf: faellt der Kurs in einer roten Kerze (-candle_drop_pct in window_s) unter den Entry, kauft der Bot
+        add_pct_of_first % des ersten Einsatzes nach und senkt so seinen Durchschnitts-Entry. Nie bei Rug-Anzeichen,
+        nie kurz vor dem Stop-Loss, nur wenn noch Kaeufer da sind. Muss mit gehaltenem self.lock aufgerufen werden."""
+        s = self.cfg["sniper"]
+        n = pos.get("dip_adds", 0)
+        if n >= dip.get("max_adds", 2) or token in self.rug_alarm:
+            return
+        if now() - pos.get("last_dip_at", pos["opened_at"]) < dip.get("min_gap_s", 180):
+            return
+        price, entry = pos["last_price"], pos["entry_price"]
+        below = (1 - price / entry) * 100
+        if below < dip.get("min_below_entry_pct", 8) or below > dip.get("max_below_entry_pct", 18):
+            return  # zu wenig gefallen oder schon zu nah am Stop-Loss
+        recent = [v for ts, v in pos.get("hist", []) if now() - ts <= dip.get("window_s", 120)]
+        drop = (1 - price / max(recent)) * 100 if recent else 0
+        if drop < dip.get("candle_drop_pct", 6):
+            return  # keine frische rote Kerze, sondern langsames Abrutschen
+        b5, s5 = fnum(m5.get("buys")), fnum(m5.get("sells"))
+        if b5 < dip.get("min_buy_sell_ratio_m5", 0.8) * s5:
+            return  # Verkaeufer dominieren -> eher Abverkauf als Dip
+        if pos["last_liq"] < pos["entry_liq"] * (1 - dip.get("max_liq_drop_pct", 10) / 100):
+            return  # Liquiditaet schrumpft -> Rug-Gefahr
+        size = min((pos.get("first_cost") or pos["cost_usd"]) * dip.get("add_pct_of_first", 25) / 100, self.cash - 1)
+        if size < s["min_position_usd"]:
+            return
+        fill = price * (1 + self.slippage_pct(size, pos["last_liq"]) / 100)
+        fee = size * s["fee_pct_per_side"] / 100 + s["network_fee_usd"]
+        qty = (size - fee) / fill
+        self.cash -= size
+        old = entry
+        pos["entry_price"] = (pos["qty"] * entry + qty * fill) / (pos["qty"] + qty)
+        pos["qty"] += qty
+        pos["cost_usd"] += size
+        pos["dip_adds"] = n + 1
+        pos["last_dip_at"] = now()
+        pos.setdefault("entry_hist", [[pos["opened_at"], pos.get("first_entry_price") or old]]).append([now(), pos["entry_price"]])
+        pos.setdefault("events", []).append([now(), f"Dip {n + 1}", fill])
+        self.log("sniper", f"DIP-KAUF ${pos['symbol']} fuer ${size:,.2f} nach roter Kerze (-{drop:.0f}%), "
+                           f"Entry {old:.8g} -> {pos['entry_price']:.8g}", "buy")
 
     @staticmethod
     def partial_level(ptp, n):
@@ -1152,7 +1200,7 @@ class Bot:
                     "held_min": (now() - p["opened_at"]) / 60,
                     "entry_mcap": p.get("entry_mcap") or (p.get("info") or {}).get("mcap"),
                     "last_mcap": p.get("last_mcap") or (p.get("entry_mcap") or (p.get("info") or {}).get("mcap") or 0) * p["last_price"] / p["entry_price"],
-                    "entry_price": p["entry_price"], "adds": p.get("adds", 0), "partial_done": p.get("partial_done", False),
+                    "entry_price": p["entry_price"], "adds": p.get("adds", 0) + p.get("dip_adds", 0), "dip_adds": p.get("dip_adds", 0), "partial_done": p.get("partial_done", False),
                     "partial_level": p.get("partial_level", 1 if p.get("partial_done") else 0), "realized_usd": p.get("realized_usd", 0),
                     "hist": downsample(p.get("hist") or [], 900),
                     "entry_hist": p.get("entry_hist") or [[p["opened_at"], p.get("first_entry_price") or p["entry_price"]]],

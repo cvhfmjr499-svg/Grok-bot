@@ -247,7 +247,7 @@ function buildCandles(hist, b) {
 }
 function cardInfo(p) {
   return `<div class="meta"><span>Kauf bei MCap <b>${mc(p.entry_mcap)}</b></span><span>jetzt ${mc(p.last_mcap)}</span></div>
-    <div class="meta"><span>Entry <b style="color:#f5b301">${fmtPrice(p.entry_price)}</b>${p.adds ? " (Ø nach " + p.adds + " Nachkauf" + (p.adds > 1 ? "en" : "") + ")" : ""}</span><span>Hoch ${pct(p.peak_pct)} · ${ago(p.held_min)}</span></div>
+    <div class="meta"><span>Entry <b style="color:#f5b301">${fmtPrice(p.entry_price)}</b>${p.adds ? " (Ø nach " + p.adds + " Nachkauf" + (p.adds > 1 ? "en" : "") + (p.dip_adds ? ", davon " + p.dip_adds + " Dip" : "") + ")" : ""}</span><span>Hoch ${pct(p.peak_pct)} · ${ago(p.held_min)}</span></div>
     <div class="meta"><span>${usd(p.cost_usd)} → ${usd(p.value_usd)}</span><span>${p.partial_done ? p.partial_level + "× Gewinn gesichert (" + usd(p.realized_usd) + ")" : ""}</span></div>
     <div class="meta"><a class="tv" href="${esc(p.url)}" target="_blank" rel="noopener">TradingView-Chart auf DexScreener ↗</a><span></span></div>`;
 }
@@ -305,8 +305,8 @@ function renderPositions(s) {
     if (!ent.has(t0)) ent.set(t0, (p.entry_hist && p.entry_hist[0]) ? p.entry_hist[0][1] : p.entry_price);
     c.entry.setData([...ent.entries()].sort((x, y) => x[0] - y[0]).map(([time, value]) => ({ time, value })));
     const marks = (p.events || []).map(([ts, label]) => {
-      const tp = label.startsWith("TP");
-      return { time: clamp(ts), position: tp ? "aboveBar" : "belowBar", color: tp ? "#22c55e" : "#f5b301",
+      const tp = label.startsWith("TP"), dip = label.startsWith("Dip");
+      return { time: clamp(ts), position: tp ? "aboveBar" : "belowBar", color: tp ? "#22c55e" : dip ? "#3b82f6" : "#f5b301",
                shape: tp ? "arrowDown" : "arrowUp", text: label };
     }).sort((x, y) => x.time - y.time);
     c.candles.setMarkers(marks);
