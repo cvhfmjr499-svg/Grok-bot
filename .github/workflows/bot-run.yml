@@ -32,8 +32,10 @@ jobs:
             git add state.json dev_blacklist.json docs 2>/dev/null || true
             git diff --cached --quiet && return 0
             git commit -q -m "Bot-Lauf: Stand $(date -u +%H:%M) UTC"
+            # Der Bot schreibt waehrenddessen weiter in seine Dateien -> --autostash, sonst verweigert git den Abgleich
             for attempt in 1 2 3; do
-              git pull -q --rebase -X theirs origin main && git push -q origin main && return 0
+              git push -q origin main && return 0
+              git pull -q --rebase --autostash -X theirs origin main && git push -q origin main && return 0
               sleep 5
             done
             echo "Push fehlgeschlagen, naechster Versuch beim naechsten Speichern"
