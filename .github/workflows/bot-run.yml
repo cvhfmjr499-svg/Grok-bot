@@ -52,6 +52,16 @@ jobs:
             save
           done
           wait $BOT || true
-          # Screenshot der Handy-Seite nach jedem Lauf (docs/screenshots/)
-          python scripts/screenshot.py || echo "Screenshot fehlgeschlagen"
           save
+      # eigener Schritt: laeuft auch, wenn der Lauf abgebrochen wurde (z. B. beim Neustart nach einem Update)
+      - name: Screenshot der Handy-Seite speichern
+        if: always()
+        run: |
+          python scripts/screenshot.py || { echo "Screenshot fehlgeschlagen"; exit 0; }
+          git add docs/screenshots
+          git diff --cached --quiet && exit 0
+          git commit -q -m "Screenshot nach dem Lauf"
+          for attempt in 1 2 3; do
+            git pull -q --rebase --autostash -X theirs origin main && git push -q origin main && exit 0
+            sleep 5
+          done
