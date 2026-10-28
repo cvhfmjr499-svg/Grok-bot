@@ -85,5 +85,12 @@
   "ts": 1793224879.986566,
   "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-15% in 90 min) (Rug-Gefahr)",
   "pnl_pct": -9.2
+ },
+ "6kKdGNtMrvKfPXVDz2oTJzYV6ZokdZxJqKTHjnpTajGk": {
+  "symbol": "USDF",
+  "token": "9k6gfTLbDaUpx635kQaGTeDvzYs7hWdDW1MerpjYpump",
+  "chain": "solana",
+  "ts": 1793225330.8057625,
+  "reason": "von dir (Handy) als Rug gemeldet"
  }
 }
