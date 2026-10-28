@@ -11,13 +11,13 @@
     "min_liquidity_usd": 15000,
     "max_liquidity_usd": 2000000,
     "min_age_minutes": 0,
-    "max_age_hours": 168,
+    "max_age_hours": 24,
     "min_volume_h1_usd": 1000,
     "min_mcap_usd": 10000,
     "max_mcap_usd": 50000000.0,
     "min_buys_h1": 5,
     "min_buy_sell_ratio_h1": 0,
-    "min_change_h1_pct": -1000,
+    "min_change_h1_pct": -10,
     "max_change_m5_pct": 25,
     "max_change_h1_pct": 80,
     "use_rugcheck": true,
@@ -100,6 +100,10 @@
       "enabled": true,
       "levels": [
         [
+          20,
+          25
+        ],
+        [
           50,
           25
         ],
@@ -113,7 +117,11 @@
     },
     "hold_only_if_losing": true,
     "trailing_distance_after_tp_pct": 15,
-    "chart_watch_minutes": 30
+    "chart_watch_minutes": 30,
+    "breakeven": {
+      "activate_pct": 20,
+      "lock_pct": 3
+    }
   },
   "fomo": {
     "enabled": false,

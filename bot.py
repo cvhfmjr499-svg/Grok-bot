@@ -343,6 +343,11 @@ class Bot:
                 s = json.load(f)
             self.cash = s["cash"]
             self.positions = s["positions"]
+            for pos in self.positions.values():
+                if not pos.get("ladder2"):  # alte Leiter ohne +20%-Stufe: erledigte Stufen eins weiter schieben
+                    n = pos.get("partial_level", 1 if pos.get("partial_done") else 0)
+                    pos["partial_level"] = n + 1 if n >= 1 else 0
+                    pos["ladder2"] = True
             self.closed = s["closed"]
             self.equity_history = s.get("equity_history", [])[-2000:]
             self.equity_long = s.get("equity_long") or downsample(self.equity_history, 200)
@@ -888,7 +893,7 @@ class Bot:
                 "opened_at": now(), "cost_usd": size, "qty": qty, "entry_price": fill,
                 "last_price": price, "peak_price": price, "entry_liq": liq, "last_liq": liq,
                 "entry_mcap": info.get("mcap"), "last_mcap": info.get("mcap"), "hist": [[now(), price]],
-                "entry_depth": pool_depth(pair) or None,
+                "entry_depth": pool_depth(pair) or None, "ladder2": True,
                 "first_entry_price": fill, "first_cost": size, "adds": 0,
                 "entry_hist": [[now(), fill]], "events": [[now(), "Kauf", fill]],
                 "info": info, "source": self.source.get(token, "?"),
@@ -1017,6 +1022,9 @@ class Bot:
                         reason = f"Soft-Rug-Alarm: {self.rug_alarm.pop(token)} (Rug-Gefahr)"
                     elif liq_drop >= r["exit_if_liquidity_drops_pct"]:
                         reason = f"Liquiditaet abgezogen: Pool -{liq_drop:.0f}% seit Kauf (Rug-Gefahr)"
+                    elif r.get("breakeven", {}).get("activate_pct") and peak_pnl >= r["breakeven"]["activate_pct"] and pnl <= r["breakeven"].get("lock_pct", 2):
+                        # war schon deutlich im Plus -> nicht mehr ins Minus laufen lassen
+                        reason = f"Break-even-Stop (Hoch {peak_pnl:+.0f}%, jetzt {pnl:+.0f}%)"
                     elif pnl <= -r["stop_loss_pct"]:
                         reason = f"Stop-Loss {pnl:+.1f}%"
                     elif r.get("take_profit_pct") and pnl >= r["take_profit_pct"]:

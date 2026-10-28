@@ -1,6 +1,6 @@
 name: Grok Bot (Dauerbetrieb)
 
-# Jeder Lauf dauert ca. 55 Minuten. Der Zeitplan startet alle 15 Minuten einen neuen Lauf; durch die
+# Jeder Lauf dauert ca. 5 h 40 min. Der Zeitplan startet alle 15 Minuten einen neuen Lauf; durch die
 # concurrency-Gruppe wartet er, bis der vorige fertig ist. So laeuft der Bot praktisch ohne Pause.
 on:
   schedule:
@@ -18,7 +18,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 62
+    timeout-minutes: 355  # GitHub erlaubt hoechstens 6 h pro Lauf
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -34,7 +34,7 @@ jobs:
           git config user.email "bot@local"
           python scripts/build_docs.py
           save() {
-            git add state.json dev_blacklist.json docs 2>/dev/null || true
+            git add state.json dev_blacklist.json docs 2>/dev/null || true  # docs enthaelt auch docs/screenshots
             git diff --cached --quiet && return 0
             git commit -q -m "Bot-Lauf: Stand $(date -u +%H:%M) UTC"
             # Der Bot schreibt waehrenddessen weiter in seine Dateien -> --autostash, sonst verweigert git den Abgleich
@@ -45,10 +45,15 @@ jobs:
             done
             echo "Push fehlgeschlagen, naechster Versuch beim naechsten Speichern"
           }
-          python bot.py --headless --minutes 55 --export docs/data/state.json --export-every 20 &
+          # ein Lauf dauert ca. 5 h 40 min (GitHub erlaubt hoechstens 6 h), danach startet sofort der naechste
+          python bot.py --headless --minutes 340 --export docs/data/state.json --export-every 20 &
           BOT=$!
+          n=0
           while kill -0 $BOT 2>/dev/null; do
             sleep 60
+            n=$((n + 1))
+            # jede Stunde ein Screenshot der Handy-Seite
+            if [ $((n % 60)) -eq 0 ]; then python scripts/screenshot.py || echo "Screenshot fehlgeschlagen"; fi
             save
           done
           wait $BOT || true
