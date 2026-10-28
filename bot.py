@@ -1054,6 +1054,9 @@ class Bot:
                     dip = self.cfg["sniper"].get("dip_buy", {})
                     if p and dip.get("enabled"):
                         self.dip_add(token, pos, dip, (p.get("txns") or {}).get("m5") or {})
+                    run = r.get("runner", {})
+                    if p and run.get("enabled") and run.get("dip_buy", True):
+                        self.runner_dip_add(token, pos, run, (p.get("txns") or {}).get("m5") or {})
                     ptp = r.get("partial_tp", {})
                     if p and ptp.get("enabled"):
                         self.partial_take_profit(token, pos, ptp)
@@ -1069,6 +1072,9 @@ class Bot:
                     trail_dist = r["trailing_distance_pct"]
                     if r.get("trailing_distance_after_tp_pct") and (pos.get("partial_level", 0) >= 1 or pos.get("partial_done")):
                         trail_dist = r["trailing_distance_after_tp_pct"]
+                    run = r.get("runner", {})
+                    if run.get("enabled") and pos.get("partial_level", 0) >= run.get("after_tp_level", 2):
+                        trail_dist = run.get("trailing_pct", 30)  # Laeufer (z. B. $DUBBLE): mehr Luft lassen, laufen lassen
                     reason = None
                     dev = self.creators.get(token)
                     if dev and dev in self.blacklist:
@@ -1161,6 +1167,47 @@ class Bot:
         pos.setdefault("entry_hist", [[pos["opened_at"], pos.get("first_entry_price") or old]]).append([now(), pos["entry_price"]])
         pos.setdefault("events", []).append([now(), f"Dip {n + 1}", fill])
         self.log("sniper", f"DIP-KAUF ${pos['symbol']} fuer ${size:,.2f} nach roter Kerze (-{drop:.0f}%), "
+                           f"Entry {old:.8g} -> {pos['entry_price']:.8g}", "buy")
+
+    def runner_dip_add(self, token, pos, run, m5):
+        """Laeufer nach dem 2. Teilgewinn: bei einer roten Kerze nachkaufen und die Position vergroessern.
+        Der Coin ist deutlich im Plus, der Entry steigt dadurch (gewollt). Nie bei Rug-Anzeichen, nur wenn noch Kaeufer
+        da sind und die Liquiditaet nicht abgezogen wird. Muss mit gehaltenem self.lock aufgerufen werden."""
+        s = self.cfg["sniper"]
+        if pos.get("partial_level", 0) < run.get("after_tp_level", 2) or token in self.rug_alarm or token in self.chart_exit:
+            return
+        n = pos.get("runner_adds", 0)
+        if n >= run.get("max_adds", 2) or now() - pos.get("last_runner_add", 0) < run.get("min_gap_s", 300):
+            return
+        price, entry = pos["last_price"], pos["entry_price"]
+        if (price / entry - 1) * 100 < run.get("min_gain_pct", 30):
+            return  # nur solange der Coin klar im Plus ist
+        recent = [v for ts, v in pos.get("hist", []) if now() - ts <= run.get("window_s", 180)]
+        drop = (1 - price / max(recent)) * 100 if recent else 0
+        if not (run.get("min_red_pct", 8) <= drop <= run.get("max_red_pct", 20)):
+            return  # keine rote Kerze - oder schon ein Absturz (dann nicht nachkaufen)
+        b5, s5 = fnum(m5.get("buys")), fnum(m5.get("sells"))
+        if b5 < run.get("min_buy_sell_ratio_m5", 0.8) * s5:
+            return
+        if pos.get("entry_depth") and pos.get("last_depth", 0) < pos["entry_depth"] * 0.9:
+            return  # Liquiditaet wird abgezogen
+        size = min((pos.get("first_cost") or pos["cost_usd"]) * run.get("add_pct_of_first", 25) / 100, self.cash - 1)
+        if size < s["min_position_usd"]:
+            return
+        fill = price * (1 + self.slippage_pct(size, pos["last_liq"]) / 100)
+        fee = size * s["fee_pct_per_side"] / 100 + s["network_fee_usd"]
+        qty = (size - fee) / fill
+        self.cash -= size
+        old = entry
+        pos["entry_price"] = (pos["qty"] * entry + qty * fill) / (pos["qty"] + qty)
+        pos["qty"] += qty
+        pos["cost_usd"] += size
+        pos["runner_adds"] = n + 1
+        pos["adds"] = pos.get("adds", 0) + 1
+        pos["last_runner_add"] = now()
+        pos.setdefault("entry_hist", [[pos["opened_at"], pos.get("first_entry_price") or old]]).append([now(), pos["entry_price"]])
+        pos.setdefault("events", []).append([now(), f"Dip-Nachkauf {n + 1}", fill])
+        self.log("sniper", f"LAEUFER-NACHKAUF ${pos['symbol']} fuer ${size:,.2f} in roter Kerze (-{drop:.0f}%, Coin {(price / old - 1) * 100:+.0f}%), "
                            f"Entry {old:.8g} -> {pos['entry_price']:.8g}", "buy")
 
     @staticmethod

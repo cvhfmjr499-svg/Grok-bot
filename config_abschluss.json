@@ -130,6 +130,20 @@
       "max_trades_m5": 3,
       "max_volume_h1_usd": 3000,
       "minutes": 10
+    },
+    "runner": {
+      "enabled": true,
+      "after_tp_level": 2,
+      "trailing_pct": 30,
+      "dip_buy": true,
+      "min_gain_pct": 30,
+      "window_s": 180,
+      "min_red_pct": 8,
+      "max_red_pct": 20,
+      "add_pct_of_first": 25,
+      "max_adds": 2,
+      "min_gap_s": 300,
+      "min_buy_sell_ratio_m5": 0.8
     }
   },
   "fomo": {
