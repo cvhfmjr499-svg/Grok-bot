@@ -44,7 +44,7 @@
   .pnlrow { display: flex; justify-content: space-between; font-size: 14px; color: var(--muted); }
   .up { color: var(--green); font-weight: 600; } .down { color: var(--red); font-weight: 600; }
   svg.spark { width: 100%; height: 120px; display: block; }
-  .eqchart { position: relative; margin-top: 8px; touch-action: pan-y; user-select: none; -webkit-user-select: none; cursor: crosshair; }
+  .eqchart { position: relative; margin-top: 8px; touch-action: none; user-select: none; -webkit-user-select: none; cursor: crosshair; }
   .eqtip { position: absolute; top: -2px; transform: translateX(-50%); font-size: 11px; font-weight: 600; color: var(--muted); background: var(--bg); padding: 2px 7px; border-radius: 7px; pointer-events: none; display: none; white-space: nowrap; }
   .ranges { display: flex; gap: 4px; justify-content: flex-end; margin-top: 6px; }
   .ranges button { border: 0; background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; padding: 4px 10px; border-radius: 9px; cursor: pointer; }
@@ -210,7 +210,7 @@ const ago = m => m < 60 ? m.toFixed(0) + " min" : (m / 60).toFixed(1) + " h";
 const colors = { scout: "var(--blue)", analyst: "var(--purple)", sniper: "var(--orange)", risk: "var(--pink)", banker: "var(--green)", fomo: "var(--text)", system: "var(--muted)" };
 
 // Kontostand-Chart wie in der FOMO-App: Zeitraum waehlen, mit dem Finger ueber die Linie fahren -> Wert zu jeder Uhrzeit
-const EQ = { range: "24h", pts: [], scrub: null, live: null };
+const EQ = { range: "24h", pts: [], view: [], scrubT: null, live: null };
 try { EQ.range = localStorage.getItem("grok_range") || "24h"; } catch (e) {}
 function showEquity(v, ref, label) {
   const [whole, cents] = CUR.eur ? usd(v).replace(" €", "").split(",").map((x, i) => i ? x + " €" : x) : usd(v).split(".");
@@ -218,35 +218,74 @@ function showEquity(v, ref, label) {
   const d = v - ref;
   $("pnl").innerHTML = `<span class="${d >= 0 ? "up" : "down"}">${sgn(d)}${usd(d)} (${pct(ref ? d / ref * 100 : 0)})</span> <span style="color:var(--muted)">${label}</span>`;
 }
+// weiche Kurve (monotone kubische Interpolation wie bei d3.curveMonotoneX: keine Ueberschwinger)
+function smoothPath(P) {
+  const n = P.length;
+  if (n < 2) return "";
+  const m = new Array(n).fill(0), d = [];
+  for (let i = 0; i < n - 1; i++) d.push((P[i + 1][1] - P[i][1]) / ((P[i + 1][0] - P[i][0]) || 1));
+  m[0] = d[0]; m[n - 1] = d[n - 2];
+  for (let i = 1; i < n - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+  for (let i = 0; i < n - 1; i++) {  // Fritsch-Carlson: Steigungen begrenzen
+    if (d[i] === 0) { m[i] = m[i + 1] = 0; continue; }
+    const a = m[i] / d[i], b = m[i + 1] / d[i], h = a * a + b * b;
+    if (h > 9) { const t = 3 / Math.sqrt(h); m[i] = t * a * d[i]; m[i + 1] = t * b * d[i]; }
+  }
+  let out = `M${P[0][0].toFixed(1)},${P[0][1].toFixed(1)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const dx = (P[i + 1][0] - P[i][0]) / 3;
+    out += `C${(P[i][0] + dx).toFixed(1)},${(P[i][1] + m[i] * dx).toFixed(1)} ${(P[i + 1][0] - dx).toFixed(1)},${(P[i + 1][1] - m[i + 1] * dx).toFixed(1)} ${P[i + 1][0].toFixed(1)},${P[i + 1][1].toFixed(1)}`;
+  }
+  return out;
+}
+// Verlauf fuer die Anzeige glaetten: hoechstens ~90 Punkte, gleitender Mittelwert gegen Zacken (letzter Punkt bleibt exakt)
+function displayPoints(pts) {
+  const step = Math.max(1, Math.ceil(pts.length / 90)), out = [];
+  for (let i = 0; i < pts.length; i += step) {
+    const chunk = pts.slice(i, i + step);
+    out.push([chunk[chunk.length - 1][0], chunk.reduce((a, c) => a + c[1], 0) / chunk.length]);
+  }
+  out[0] = pts[0].slice(); out[out.length - 1] = pts[pts.length - 1].slice();
+  return out;
+}
+function valueAt(t) {  // Wert zwischen zwei Punkten linear -> Zahl laeuft beim Wischen fluessig mit
+  const P = EQ.view;
+  if (t <= P[0][0]) return P[0][1];
+  for (let i = 1; i < P.length; i++) if (P[i][0] >= t) { const a = P[i - 1], b = P[i], f = (t - a[0]) / ((b[0] - a[0]) || 1); return a[1] + f * (b[1] - a[1]); }
+  return P[P.length - 1][1];
+}
 function spark() {
   const svg = $("spark"), pts = EQ.pts;
   if (pts.length < 2) { svg.innerHTML = ""; return; }
-  const ys = pts.map(h => h[1]), ref = ys[0];
-  let lo = Math.min(...ys), hi = Math.max(...ys);
+  const P = EQ.view = displayPoints(pts);
+  const ys = P.map(h => h[1]), ref = pts[0][1];
+  let lo = Math.min(...ys, ref), hi = Math.max(...ys, ref);
   if (hi - lo < 0.5) { hi += 0.5; lo -= 0.5; }
-  const t0 = pts[0][0], t1 = pts[pts.length - 1][0];
-  const X = t => ((t - t0) / Math.max(t1 - t0, 1)) * 400, Y = v => 112 - ((v - lo) / (hi - lo)) * 104;
-  const line = a => a.map(h => `${X(h[0]).toFixed(1)},${Y(h[1]).toFixed(1)}`).join(" ");
-  const i = EQ.scrub ?? pts.length - 1, cur = pts[i];
-  const col = cur[1] >= ref ? "var(--green)" : "var(--red)";
-  const before = pts.slice(0, i + 1), after = pts.slice(i);
-  let html = `<line x1="0" x2="400" y1="${Y(ref).toFixed(1)}" y2="${Y(ref).toFixed(1)}" stroke="var(--muted)" stroke-dasharray="3 4" stroke-width="1" opacity=".45" vector-effect="non-scaling-stroke"/>
-    <polygon points="0,120 ${line(before)} ${X(cur[0]).toFixed(1)},120" fill="${col}" opacity=".12"/>
-    <polyline points="${line(before)}" fill="none" stroke="${col}" stroke-width="2.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>`;
-  if (after.length > 1) html += `<polyline points="${line(after)}" fill="none" stroke="${col}" stroke-width="2.5" opacity=".3" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>`;
-  if (EQ.scrub != null) html += `<line x1="${X(cur[0]).toFixed(1)}" x2="${X(cur[0]).toFixed(1)}" y1="0" y2="120" stroke="${col}" stroke-width="1" opacity=".6" vector-effect="non-scaling-stroke"/>`;
-  svg.innerHTML = html;
-  // Punkt als HTML (SVG ist gestreckt -> Kreis waere oval)
+  const pad = (hi - lo) * 0.08; hi += pad; lo -= pad;
+  const t0 = P[0][0], t1 = P[P.length - 1][0];
+  const X = t => ((t - t0) / Math.max(t1 - t0, 1)) * 400, Y = v => 116 - ((v - lo) / (hi - lo)) * 110;
+  const XY = P.map(h => [X(h[0]), Y(h[1])]);
+  const scrub = EQ.scrubT != null, tc = scrub ? EQ.scrubT : t1, vc = scrub ? valueAt(tc) : pts[pts.length - 1][1];
+  const col = vc >= ref ? "var(--green)" : "var(--red)", xc = X(tc);
+  const path = smoothPath(XY), id = "eqclip";
+  svg.innerHTML = `<defs><clipPath id="${id}a"><rect x="0" y="0" width="${xc.toFixed(1)}" height="120"/></clipPath>
+      <clipPath id="${id}b"><rect x="${xc.toFixed(1)}" y="0" width="${(400 - xc + 1).toFixed(1)}" height="120"/></clipPath>
+      <linearGradient id="${id}g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".22"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
+    <line x1="0" x2="400" y1="${Y(ref).toFixed(1)}" y2="${Y(ref).toFixed(1)}" stroke="var(--muted)" stroke-dasharray="3 4" stroke-width="1" opacity=".45" vector-effect="non-scaling-stroke"/>
+    <path d="${path} L400,120 L0,120 Z" fill="url(#${id}g)" clip-path="url(#${id}a)"/>
+    <path d="${path}" fill="none" stroke="${col}" stroke-width="2.5" vector-effect="non-scaling-stroke" stroke-linecap="round" clip-path="url(#${id}a)"/>
+    <path d="${path}" fill="none" stroke="${col}" stroke-width="2.5" opacity=".28" vector-effect="non-scaling-stroke" clip-path="url(#${id}b)"/>
+    ${scrub ? `<line x1="${xc.toFixed(1)}" x2="${xc.toFixed(1)}" y1="0" y2="120" stroke="${col}" stroke-width="1" opacity=".55" vector-effect="non-scaling-stroke"/>` : ""}`;
   const box = $("eqchart"), w = box.clientWidth, dot = box.querySelector(".eqdot") || box.appendChild(Object.assign(document.createElement("div"), { className: "eqdot" }));
-  dot.style.cssText = `position:absolute;width:12px;height:12px;border-radius:50%;background:${col};border:2px solid var(--card);transform:translate(-50%,-50%);pointer-events:none;left:${X(cur[0]) / 400 * w}px;top:${Y(cur[1]) / 120 * 120}px`;
+  dot.style.cssText = `position:absolute;width:12px;height:12px;border-radius:50%;background:${col};border:2px solid var(--card);transform:translate(-50%,-50%);pointer-events:none;left:${xc / 400 * w}px;top:${Y(vc)}px`;
   const tip = $("eqtip");
-  if (EQ.scrub != null) {
-    const d = new Date(cur[0] * 1000), long = t1 - t0 > 86400 * 1.5;
-    tip.textContent = long ? d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" }) + " " + d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
-                           : d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
-    tip.style.left = Math.min(Math.max(X(cur[0]) / 400 * w, 30), w - 30) + "px";
+  if (scrub) {
+    const d = new Date(tc * 1000), long = t1 - t0 > 86400 * 1.5;
+    const hm = d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }), dm = d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
+    tip.textContent = long ? dm + " " + hm : hm;
+    tip.style.left = Math.min(Math.max(xc / 400 * w, 30), w - 30) + "px";
     tip.style.display = "block";
-    showEquity(cur[1], ref, long ? d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" }) : tip.textContent);
+    showEquity(vc, ref, long ? dm : hm);
   } else {
     tip.style.display = "none";
     if (EQ.live) showEquity(EQ.live.eq, ref, EQ.range === "all" ? "seit Start" : EQ.range);
@@ -257,27 +296,29 @@ function setEquityData(s) {
   EQ.pts = (r[EQ.range] || r["24h"] || []).slice();
   EQ.live = { eq: s.equity };
   if (EQ.pts.length) EQ.pts[EQ.pts.length - 1] = [s.now || EQ.pts[EQ.pts.length - 1][0], s.equity];
-  if (EQ.scrub != null && EQ.scrub >= EQ.pts.length) EQ.scrub = null;
   spark();
 }
 (function () {
   const box = $("eqchart");
+  let raf = 0, lastX = 0, active = false;
+  const draw = () => { raf = 0; spark(); };
   const pick = ev => {
     if (EQ.pts.length < 2) return;
-    const r = box.getBoundingClientRect(), x = Math.min(Math.max((ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left, 0), r.width);
-    const t0 = EQ.pts[0][0], t1 = EQ.pts[EQ.pts.length - 1][0], t = t0 + (x / r.width) * (t1 - t0);
-    let best = 0;
-    EQ.pts.forEach((p, i) => { if (Math.abs(p[0] - t) < Math.abs(EQ.pts[best][0] - t)) best = i; });
-    EQ.scrub = best; spark();
+    const r = box.getBoundingClientRect();
+    lastX = Math.min(Math.max(ev.clientX - r.left, 0), r.width);
+    const t0 = EQ.pts[0][0], t1 = EQ.pts[EQ.pts.length - 1][0];
+    EQ.scrubT = t0 + (lastX / r.width) * (t1 - t0);
+    if (!raf) raf = requestAnimationFrame(draw);
   };
-  const end = () => { EQ.scrub = null; spark(); };
-  box.addEventListener("pointerdown", ev => { box.setPointerCapture && box.setPointerCapture(ev.pointerId); pick(ev); });
-  box.addEventListener("pointermove", ev => { if (ev.pointerType === "mouse" || ev.buttons) pick(ev); });
-  box.addEventListener("pointerup", end); box.addEventListener("pointercancel", end); box.addEventListener("pointerleave", ev => { if (ev.pointerType === "mouse") end(); });
+  const end = () => { active = false; EQ.scrubT = null; if (!raf) raf = requestAnimationFrame(draw); };
+  box.addEventListener("pointerdown", ev => { active = true; try { box.setPointerCapture(ev.pointerId); } catch (e) {} pick(ev); });
+  box.addEventListener("pointermove", ev => { if (active || ev.pointerType === "mouse") pick(ev); });
+  box.addEventListener("pointerup", end); box.addEventListener("pointercancel", end);
+  box.addEventListener("pointerleave", ev => { if (ev.pointerType === "mouse") end(); });
   document.querySelectorAll("#ranges button").forEach(b => {
     b.classList.toggle("on", b.dataset.r === EQ.range);
     b.onclick = () => {
-      EQ.range = b.dataset.r; EQ.scrub = null;
+      EQ.range = b.dataset.r; EQ.scrubT = null;
       try { localStorage.setItem("grok_range", EQ.range); } catch (e) {}
       document.querySelectorAll("#ranges button").forEach(x => x.classList.toggle("on", x === b));
       if (window.LAST_STATE) setEquityData(window.LAST_STATE);

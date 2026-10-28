@@ -88,10 +88,10 @@
       "min_sells_m5": 30,
       "recheck_minutes": 10,
       "max_insider_pct": 15,
-      "sell_buy_ratio_h6": 2.5,
       "liq_drain_pct_90m": 15,
       "insider_dump_pts": 1.5,
-      "crash_pct_2m": 30
+      "crash_pct_2m": 50,
+      "panic_lp_pull_pct": 8
     },
     "partial_tp": {
       "enabled": true,

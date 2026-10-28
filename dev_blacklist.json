@@ -14,78 +14,6 @@
   "ts": 1793210314.135292,
   "reason": "vom Nutzer gemeldet: Soft-Rug (Insider 15 %, 15x Verkaeufe)"
  },
- "EAJStF1Rs3aXojYwHaYmrMg7sAgsyg9YjgAuEoNGUToM": {
-  "symbol": "paws",
-  "token": "Fp4JkqEcKYKBKhb9iMu9NSDeo71HWgq2q9QtXaaKpump",
-  "chain": "solana",
-  "ts": 1793213138.0112052,
-  "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-16% in 90 min) (Rug-Gefahr)",
-  "pnl_pct": -13.3
- },
- "5DrsWQkRs74ywDmtiATjp3BMs3zw6p5vU9kGuUAQxb7v": {
-  "symbol": "PlasticInu",
-  "token": "FxZk7hfJawUBphkW4LgYMkQZsAVvA4bnYFPx3hBmiMb3",
-  "chain": "solana",
-  "ts": 1793221502.085136,
-  "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-25% in 90 min) (Rug-Gefahr)",
-  "pnl_pct": -42.4
- },
- "427KdDgBfWZbFy92BEUZk2i8efYy6stxW5JmhtXRgHVp": {
-  "symbol": "EXILE",
-  "token": "8JAPUKQxPKB2FGps1fxTtfpZgXQMgtBhu1HzBrV9Bayo",
-  "chain": "solana",
-  "ts": 1793222236.7225335,
-  "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-20% in 90 min) (Rug-Gefahr)",
-  "pnl_pct": -14.8
- },
- "DPQoxAKKrCtjfZ577QyrKBCfXy8KhJxRcxj6awgbBWYw": {
-  "symbol": "MIKA",
-  "token": "F5v2odurfbucdViokrzwYNczrrTZuvHhnY8ofRU2pump",
-  "chain": "solana",
-  "ts": 1793222712.2045965,
-  "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-18% in 90 min) (Rug-Gefahr)",
-  "pnl_pct": -31.5
- },
- "EvTeF6WrLC4FYjc28EGjVVcTzW8Z21sutKH31VNEUebW": {
-  "symbol": "HERMIT",
-  "token": "ASX4GtetW337jwG2rLZaU84eY64rRCoWbf63yXQepump",
-  "chain": "solana",
-  "ts": 1793224113.5173693,
-  "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-18% in 90 min) (Rug-Gefahr)",
-  "pnl_pct": -23.8
- },
- "E9uQx9CvBiqgW4sXDVLYRLidS6x8rC4JsML3EkBXRLqR": {
-  "symbol": "Chameleon",
-  "token": "Exv4ix6ZjWXexSkf4ZUvUbMcXCoGMksTp1NDG74wpump",
-  "chain": "solana",
-  "ts": 1793224145.6462147,
-  "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-16% in 90 min) (Rug-Gefahr)",
-  "pnl_pct": -8.6
- },
- "55w8js7gZC7YRetPxrRLJ97cBqiDKRkwiZw18jJH6kyv": {
-  "symbol": "INVISIBLE",
-  "token": "2HcvsX12NyuLnhDXoU6yWL2XLcr3snCTQ7RhqVmZuCgr",
-  "chain": "solana",
-  "ts": 1793224145.8444035,
-  "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-16% in 90 min) (Rug-Gefahr)",
-  "pnl_pct": -28.5
- },
- "7En7Bc3kKS16L4oQXEwZRdDd3rtQngSxnwuu7YggXC2E": {
-  "symbol": "dood",
-  "token": "4oTiM4rdkm3QwnvymYrcn9gCgNyHNFssnAeJxzMQpump",
-  "chain": "solana",
-  "ts": 1793224725.936764,
-  "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-21% in 90 min) (Rug-Gefahr)",
-  "pnl_pct": -11.7
- },
- "9tH2zRYdS3X7PEcsPno3GST1EHe8GX8CSNih1pKpamAp": {
-  "symbol": "mihao",
-  "token": "4CxjZyMNoF1p6eXHXHv1TWpS2X47CuUmLwtGe18spump",
-  "chain": "solana",
-  "ts": 1793224879.986566,
-  "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-15% in 90 min) (Rug-Gefahr)",
-  "pnl_pct": -9.2
- },
  "6kKdGNtMrvKfPXVDz2oTJzYV6ZokdZxJqKTHjnpTajGk": {
   "symbol": "USDF",
   "token": "9k6gfTLbDaUpx635kQaGTeDvzYs7hWdDW1MerpjYpump",
@@ -101,23 +29,5 @@
   "ts": 1793225998.191772,
   "reason": "Soft-Rug-Alarm: Fake-Handel ($4.0 pro Trade bei 4033 Trades/1h) (Rug-Gefahr)",
   "pnl_pct": -1.2
- },
- "6vJjnQkrp7HF1Ns8EpAEMVLdtsX4ZeeHop7Uhn2cJu23": {
-  "symbol": "Something",
-  "name": "Believe in Something",
-  "token": "AZdhikmyj6ibsejv7EjML9SfNmuiMvwDrKXTEU2zpump",
-  "chain": "solana",
-  "ts": 1793226245.743924,
-  "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-21% in 90 min) (Rug-Gefahr)",
-  "pnl_pct": -21.2
- },
- "FxhzrNBjULEBUw7yV2X8bVokrDjxsA93ZTmMPZNPmfAD": {
-  "symbol": "Rapport",
-  "name": "Rapport",
-  "token": "69Y6D9xQKkDYPvESDiKaQpU9Z5FXzY8LB7PthQkmpump",
-  "chain": "solana",
-  "ts": 1793227130.5228975,
-  "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-48% in 90 min) (Rug-Gefahr)",
-  "pnl_pct": -65.9
  }
 }

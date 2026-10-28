@@ -239,6 +239,18 @@ def gecko_json(url, gap_s=2.2):
             _GECKO_LAST[0] = time.time()
 
 
+def pool_depth(pair):
+    """Tiefe des Pools, die sich durch Kaeufe/Verkaeufe NICHT aendert, nur wenn Liquiditaet abgezogen wird (echter Rug).
+    Konstant-Produkt-Pool: sqrt(Coin-Menge x SOL-Menge) bleibt bei jedem Trade gleich. Faellt der Kurs, weil ein grosser
+    Trader und seine Copytrader verkaufen, sinkt zwar die Liquiditaet in $, die Tiefe aber nicht."""
+    lq = pair.get("liquidity") or {}
+    base, quote = fnum(lq.get("base")), fnum(lq.get("quote"))
+    if base > 0 and quote > 0:
+        return (base * quote) ** 0.5
+    price = fnum(pair.get("priceUsd"))
+    return fnum(lq.get("usd")) / price ** 0.5 if price > 0 else 0  # Naeherung, falls Mengen fehlen
+
+
 def chart_stats(candles):
     """Kompletter Chart seit Start: candles = [[ts, open, high, low, close, volume], ...] (Reihenfolge egal).
     -> Abstand zum Allzeithoch, groesster Absturz in einer Kerze (+ wann), aktuelles Volumen im Vergleich zum Maximum."""
@@ -691,11 +703,12 @@ class Bot:
         token = pair["baseToken"]["address"]
         tx_h6 = (pair.get("txns") or {}).get("h6") or {}
         buys6, sells6 = fnum(tx_h6.get("buys")), fnum(tx_h6.get("sells"))
+        depth = pool_depth(pair)
         lh = self.liq_hist.setdefault(token, [])
-        lh.append((now(), liq))
+        lh.append((now(), depth))
         del lh[:-30]
         past = [l for ts, l in lh if now() - 5400 <= ts < now() - 600]
-        shrink = (1 - liq / max(past)) * 100 if past and max(past) > 0 else 0
+        shrink = (1 - depth / max(past)) * 100 if past and max(past) > 0 and depth > 0 else 0  # Liquiditaet abgezogen
         ch_h6, ch_h24 = fnum(ch.get("h6")), fnum(ch.get("h24"))
         avg_trade, tx_n = self.avg_trade_usd(pair)
         copycat = self.copycat_of(pair) if c.get("block_copycats", True) else None
@@ -717,7 +730,7 @@ class Bot:
             (not c.get("max_sell_buy_ratio_h6") or sells6 <= c["max_sell_buy_ratio_h6"] * max(buys6, 1),
              f"Slow-Rug: langsamer Abverkauf ({sells6:.0f} Verkaeufe vs. {buys6:.0f} Kaeufe/6h)", 30),
             (not c.get("max_liq_shrink_pct_90m") or shrink < c["max_liq_shrink_pct_90m"],
-             f"Slow-Rug: Liquiditaet schrumpft (-{shrink:.0f}% in 90 min)", 30),
+             f"Rug: Liquiditaet abgezogen (Pool -{shrink:.0f}% in 90 min)", 30),
             (ch_h1 >= c["min_change_h1_pct"], f"faellt ({ch_h1:+.0f}% 1h)", 10),
             (ch_m5 <= c["max_change_m5_pct"], f"schon gepumpt ({ch_m5:+.0f}% 5m)", 10),
             (ch_h1 <= c["max_change_h1_pct"], f"schon gepumpt ({ch_h1:+.0f}% 1h)", 10),
@@ -842,6 +855,7 @@ class Bot:
                 "opened_at": now(), "cost_usd": size, "qty": qty, "entry_price": fill,
                 "last_price": price, "peak_price": price, "entry_liq": liq, "last_liq": liq,
                 "entry_mcap": info.get("mcap"), "last_mcap": info.get("mcap"), "hist": [[now(), price]],
+                "entry_depth": pool_depth(pair) or None,
                 "first_entry_price": fill, "first_cost": size, "adds": 0,
                 "entry_hist": [[now(), fill]], "events": [[now(), "Kauf", fill]],
                 "info": info, "source": self.source.get(token, "?"),
@@ -896,18 +910,30 @@ class Bot:
                     if p:
                         pos["last_price"] = fnum(p.get("priceUsd"), pos["last_price"])
                         pos["last_liq"] = fnum((p.get("liquidity") or {}).get("usd"), pos["last_liq"])
+                        dep = pool_depth(p)
+                        if dep > 0:
+                            pos["last_depth"] = dep
+                            pos.setdefault("entry_depth", dep)
                         pos["peak_price"] = max(pos["peak_price"], pos["last_price"])
                         pos["last_mcap"] = fnum(p.get("marketCap") or p.get("fdv"), pos.get("last_mcap") or 0)
                         m5 = (p.get("txns") or {}).get("m5") or {}
                         b5, s5 = fnum(m5.get("buys")), fnum(m5.get("sells"))
                         rw = r.get("rugwatch", {})
-                        if rw.get("enabled") and s5 >= rw.get("min_sells_m5", 30) and s5 >= rw.get("sell_buy_ratio_m5", 5) * max(b5, 1):
-                            self.rug_alarm.setdefault(token, f"{s5:.0f} Verkaeufe vs. {b5:.0f} Kaeufe in 5 min")
-                        h6 = (p.get("txns") or {}).get("h6") or {}
-                        b6, s6 = fnum(h6.get("buys")), fnum(h6.get("sells"))
-                        losing = pos["last_price"] < pos["entry_price"]
-                        if rw.get("enabled") and losing and rw.get("sell_buy_ratio_h6") and s6 >= 100 and s6 >= rw["sell_buy_ratio_h6"] * max(b6, 1):
-                            self.rug_alarm.setdefault(token, f"Slow-Rug: {s6:.0f} Verkaeufe vs. {b6:.0f} Kaeufe in 6 h")
+                        # Tiefe des Pools (sinkt nur, wenn Liquiditaet abgezogen wird, nicht durch Verkaeufe)
+                        dh = pos.setdefault("depth_hist", [])
+                        if pos.get("last_depth"):
+                            dh.append([now(), pos["last_depth"]])
+                            del dh[:-1500]
+                        top10 = max((d for ts, d in dh if now() - ts <= 600), default=0)
+                        top90 = max((d for ts, d in dh if now() - ts <= 5400), default=0)
+                        cur_d = pos.get("last_depth") or 0
+                        pulled10 = (1 - cur_d / top10) * 100 if top10 and cur_d else 0
+                        pulled90 = (1 - cur_d / top90) * 100 if top90 and cur_d else 0
+                        # Viele Verkaeufe allein sind kein Rug (z. B. grosser Trader + Copytrader steigen aus).
+                        # Nur zusammen mit abgezogener Liquiditaet ist es ein Rug.
+                        if (rw.get("enabled") and s5 >= rw.get("min_sells_m5", 30) and s5 >= rw.get("sell_buy_ratio_m5", 5) * max(b5, 1)
+                                and pulled10 >= rw.get("panic_lp_pull_pct", 8)):
+                            self.rug_alarm.setdefault(token, f"{s5:.0f} Verkaeufe vs. {b5:.0f} Kaeufe in 5 min und Liquiditaet abgezogen (-{pulled10:.0f}%)")
                         avg_t, n_t = self.avg_trade_usd(p)
                         min_avg = self.cfg["analyst"].get("min_avg_trade_usd")
                         if rw.get("enabled") and min_avg and n_t >= 300 and avg_t < min_avg:
@@ -916,12 +942,9 @@ class Bot:
                             cc = self.copycat_of(p)
                             if cc:
                                 self.rug_alarm.setdefault(token, f"Nachahmer von gemeldetem Rug ${cc}")
-                        lq = pos.setdefault("liq_hist", [])
-                        lq.append([now(), pos["last_liq"]])
-                        del lq[:-1500]
-                        recent = [l for ts, l in lq if now() - ts <= 5400]
-                        if rw.get("enabled") and losing and recent and pos["last_liq"] < max(recent) * (1 - rw.get("liq_drain_pct_90m", 15) / 100):
-                            self.rug_alarm.setdefault(token, f"Slow-Rug: Liquiditaet fliesst ab (-{(1 - pos['last_liq'] / max(recent)) * 100:.0f}% in 90 min)")
+                        pos.pop("liq_hist", None)
+                        if rw.get("enabled") and pulled90 >= rw.get("liq_drain_pct_90m", 15):
+                            self.rug_alarm.setdefault(token, f"Slow-Rug: Liquiditaet abgezogen (Pool -{pulled90:.0f}% in 90 min)")
                         h = pos.setdefault("hist", [])
                         crash = rw.get("crash_pct_2m")
                         if rw.get("enabled") and crash and h:
@@ -945,7 +968,10 @@ class Bot:
                     pnl = (price / entry - 1) * 100
                     peak_pnl = (peak / entry - 1) * 100
                     held_min = (now() - pos["opened_at"]) / 60
-                    liq_drop = (1 - pos["last_liq"] / max(pos["entry_liq"], 1)) * 100
+                    if pos.get("entry_depth") and pos.get("last_depth"):
+                        liq_drop = (1 - pos["last_depth"] / pos["entry_depth"]) * 100  # abgezogene Liquiditaet seit Kauf
+                    else:
+                        liq_drop = 0
                     reason = None
                     dev = self.creators.get(token)
                     if dev and dev in self.blacklist:
@@ -953,7 +979,7 @@ class Bot:
                     elif token in self.rug_alarm:
                         reason = f"Soft-Rug-Alarm: {self.rug_alarm.pop(token)} (Rug-Gefahr)"
                     elif liq_drop >= r["exit_if_liquidity_drops_pct"]:
-                        reason = f"Liquiditaet -{liq_drop:.0f}% (Rug-Gefahr)"
+                        reason = f"Liquiditaet abgezogen: Pool -{liq_drop:.0f}% seit Kauf (Rug-Gefahr)"
                     elif pnl <= -r["stop_loss_pct"]:
                         reason = f"Stop-Loss {pnl:+.1f}%"
                     elif r.get("take_profit_pct") and pnl >= r["take_profit_pct"]:
@@ -1015,8 +1041,8 @@ class Bot:
         b5, s5 = fnum(m5.get("buys")), fnum(m5.get("sells"))
         if b5 < dip.get("min_buy_sell_ratio_m5", 0.8) * s5:
             return  # Verkaeufer dominieren -> eher Abverkauf als Dip
-        if pos["last_liq"] < pos["entry_liq"] * (1 - dip.get("max_liq_drop_pct", 10) / 100):
-            return  # Liquiditaet schrumpft -> Rug-Gefahr
+        if pos.get("entry_depth") and pos.get("last_depth", 0) < pos["entry_depth"] * (1 - dip.get("max_liq_drop_pct", 10) / 100):
+            return  # Liquiditaet wird abgezogen -> Rug-Gefahr
         size = min((pos.get("first_cost") or pos["cost_usd"]) * dip.get("add_pct_of_first", 25) / 100, self.cash - 1)
         if size < s["min_position_usd"]:
             return
