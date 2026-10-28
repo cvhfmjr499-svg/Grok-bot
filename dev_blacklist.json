@@ -92,5 +92,14 @@
   "chain": "solana",
   "ts": 1793225330.8057625,
   "reason": "von dir (Handy) als Rug gemeldet"
+ },
+ "FsztBGrApBr1o5WWTf4mbfvCfHiCwo3jFxMJBtvapTdL": {
+  "symbol": "USDF",
+  "name": "United States Dividend Fund🌟",
+  "token": "3LC3gGxSFKCPeEeo1ruQ4nHcaSBATZvS7srefotEpump",
+  "chain": "solana",
+  "ts": 1793225998.191772,
+  "reason": "Soft-Rug-Alarm: Fake-Handel ($4.0 pro Trade bei 4033 Trades/1h) (Rug-Gefahr)",
+  "pnl_pct": -1.2
  }
 }
