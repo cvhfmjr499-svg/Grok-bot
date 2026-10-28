@@ -24,6 +24,7 @@ Ein 5-Agenten-Bot wie in den TikTok-Videos, aber **ehrlich**: Er nutzt echte Liv
 - **Rug selbst melden:** Unter jedem Chart gibt es den Knopf **„🚩 Rug melden“**. Der Bot verkauft die Position sofort und sperrt die Dev-Wallet. Auf der GitHub-Seite öffnet der Knopf ein vorausgefülltes GitHub-Issue („RUG <Adresse>“). Du tippst nur noch auf „Create“, der laufende Bot liest es innerhalb von ca. 30 Sekunden, antwortet und schließt es (nur Meldungen des Repo-Besitzers zählen). Ohne Knopf geht auch `python3 bot.py --rug <Coin-Adresse>`.
 - **Kein Positionslimit:** Der Bot kauft jeden Coin, der alle Regeln besteht (5 % pro Trade), solange Geld da ist.
 - **Quellen:** Live-Stream aller neuen Pump.fun-Coins und Abschlüsse, 17 Solana-Launchpads, GeckoTerminal, DexScreener, Jupiter. FOMO ist aus.
+- **Robinhood Chain im selben Bot:** Neben Solana scannt der Bot auch die Robinhood Chain (Pons, Uniswap v4/Pools.trade/Flap, GeckoTerminal, DexScreener), mit **derselben Kasse** und denselben Regeln. Robinhood-Coins tragen auf der Seite ein grünes „Robinhood“-Schild. Statt RugCheck prüft dort GoPlus den Vertrag (z. B. kein Kauf, wenn der Handel pausierbar ist). Einstellung: `"extra_chains": ["robinhood"]` in `config.json`, der Stand liegt in `state_robinhood.json`.
 
 ## Auf dem iPhone (a-Shell)
 1. ZIP in der App **Dateien** antippen, damit sie entpackt wird.

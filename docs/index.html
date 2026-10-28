@@ -119,6 +119,8 @@
     .col.right { position: static; max-height: none; overflow: visible; }
   }
   .pos .meta.chk { font-size: 11px; color: var(--green); }
+  .chaintag { font-size: 10px; font-weight: 700; color: #fff; background: #00c805; border-radius: 6px; padding: 1px 6px; margin-left: 6px; vertical-align: middle; }
+  .pos .top { justify-content: flex-start; } .pos .top .pnl { margin-left: auto; }
   .rugbtn { border: 1px solid var(--red); color: var(--red); background: var(--red-bg); border-radius: 10px; padding: 4px 10px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
   .rugbtn:disabled { opacity: .5; }
 </style>
@@ -403,6 +405,8 @@ function renderPositions(s) {
     }
     if (list.children[idx] !== c.el) list.insertBefore(c.el, list.children[idx] || null);
     const a = c.el.querySelector(".top a"); a.href = p.url || "#"; a.textContent = "$" + p.symbol;
+    if (p.chain && p.chain !== "solana" && !a.nextElementSibling?.classList.contains("chaintag"))
+      a.insertAdjacentHTML("afterend", `<span class="chaintag">${esc({ robinhood: "Robinhood", bsc: "BNB", base: "Base" }[p.chain] || p.chain)}</span>`);
     const pn = c.el.querySelector(".pnl"); pn.textContent = pct(p.pnl_pct); pn.className = "pnl " + (p.pnl_pct >= 0 ? "up" : "down");
     c.el.querySelector(".info").innerHTML = cardInfo(p);
     if (!c.chart) { c.el.querySelector(".lw").innerHTML = posChart(p); return; }
@@ -453,7 +457,8 @@ function render(s) {
   const st = s.stats, last = a => s.last_msg[a];
   $("pipesub").textContent = `5 agents · ${s.positions.length} in flight`;
   $("k-scout").textContent = (st.unique ?? st.scanned).toLocaleString() + " Coins · " + (s.scan_rate_min || 0).toFixed(0) + "/min";
-  const chainName = { solana: "Solana", bsc: "BNB Chain", base: "Base", robinhood: "Robinhood Chain" }[s.chain] || s.chain;
+  const names = { solana: "Solana", bsc: "BNB Chain", base: "Base", robinhood: "Robinhood" };
+  const chainName = (s.chains || [s.chain]).map(c => names[c] || c).join(" + ");
   document.querySelector(".sub").textContent = `${chainName} memes · ${st.stream_new ? "Live-Stream · " : ""}kill-first relay`;
   const kills = Object.entries(st.kills || {}).sort((a, b) => b[1] - a[1]).slice(0, 10);
   const kmax = kills.length ? kills[0][1] : 1;

@@ -149,5 +149,8 @@
   },
   "dev_blacklist": {
     "rug_loss_pct": 40
-  }
+  },
+  "extra_chains": [
+    "robinhood"
+  ]
 }

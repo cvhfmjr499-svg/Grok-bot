@@ -38,6 +38,7 @@ DEX = "https://api.dexscreener.com"
 GECKO_BASE = "https://api.geckoterminal.com/api/v2/networks/"
 GOPLUS = "https://api.gopluslabs.io/api/v1/token_security/{}?contract_addresses={}"
 # DexScreener-chainId -> GoPlus-Chain-ID (EVM); Solana nutzt RugCheck
+CHAIN_NAMES = {"solana": "Solana", "bsc": "BNB Chain", "base": "Base", "robinhood": "Robinhood"}
 GOPLUS_CHAIN = {"bsc": "56", "base": "8453", "robinhood": "4663"}
 QUOTE_SYMBOLS = {"WETH", "ETH", "WBNB", "BNB", "USDC", "USDT", "DAI", "USD1", "CBBTC", "WBTC", "SOL", "WSOL", "USDE"}
 JUP = "https://lite-api.jup.ag/tokens/v2"
@@ -281,7 +282,17 @@ def fnum(x, default=0.0):
 
 
 class Bot:
+    @property
+    def cash(self):
+        return self.wallet["cash"]
+
+    @cash.setter
+    def cash(self, v):
+        self.wallet["cash"] = v
+
     def __init__(self, cfg, state_path=STATE_PATH, name=""):
+        self.wallet = {"cash": 0.0}  # bei mehreren Chains teilen sich alle Bots eine Kasse (join_chain)
+        self.family = [self]
         self.cfg = cfg
         self.state_path = state_path
         self.name = name
@@ -376,7 +387,7 @@ class Bot:
 
     # ---------- Hilfen ----------
     def log(self, agent, msg, kind="info"):
-        entry = {"ts": now(), "agent": agent, "msg": msg, "kind": kind}
+        entry = {"ts": now(), "agent": agent, "msg": (f"[{self.name}] " if self.name else "") + msg, "kind": kind}
         with self.lock:
             self.activity.appendleft(entry)
             self.last_msg[agent] = entry
@@ -384,7 +395,13 @@ class Bot:
 
     def equity(self):
         with self.lock:
-            return self.cash + sum(p["qty"] * p["last_price"] for p in self.positions.values())
+            return self.cash + sum(p["qty"] * p["last_price"] for bot in self.family for p in bot.positions.values())
+
+    def join_chain(self, sub):
+        """Weitere Chain (z. B. Robinhood) in denselben Bot: gleiche Kasse, gleiches Lock, gleicher Stopp, eine Seite."""
+        sub.wallet, sub.lock, sub.stop_event = self.wallet, self.lock, self.stop_event
+        self.family.append(sub)
+        sub.family = self.family
 
     def fetch_pairs(self, tokens):
         """Beste Pair (hoechste Liquiditaet) je Token, in 30er-Paketen."""
@@ -1247,7 +1264,7 @@ class Bot:
             try:
                 fresh = self.scout()
                 pairs = self.fetch_pairs(fresh) if fresh else {}
-                if pairs and self.cfg.get("jupiter", {}).get("enabled", True):
+                if pairs and self.chain == "solana" and self.cfg.get("jupiter", {}).get("enabled", True):
                     self.fetch_organic(list(pairs))
                 for token in fresh:
                     if token not in pairs:
@@ -1439,7 +1456,7 @@ class Bot:
     def start(self):
         for fn in (self.scout_loop, self.risk_loop, self.fomo_loop, self.stream_loop, self.chart_watch_loop):
             threading.Thread(target=fn, daemon=True).start()
-        if os.environ.get("GITHUB_REPOSITORY") and os.environ.get("GITHUB_TOKEN"):
+        if os.environ.get("GITHUB_REPOSITORY") and os.environ.get("GITHUB_TOKEN") and self is self.family[0]:
             threading.Thread(target=self.github_reports_loop, daemon=True).start()
 
     def report_rug(self, token, who="dir"):
@@ -1447,6 +1464,11 @@ class Bot:
         token = (token or "").strip()
         if not re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]{32,44}|0x[0-9a-fA-F]{40}", token):
             return False, "Das ist keine gueltige Coin-Adresse."
+        if self is self.family[0]:  # Coin einer anderen Chain -> deren Bot meldet ihn
+            evm = token.startswith("0x")
+            for other in self.family[1:]:
+                if token in other.positions or (evm and self.chain == "solana" and other.chain != "solana"):
+                    return other.report_rug(token, who)
         with self.lock:
             pos = self.positions.get(token)
             sym = pos["symbol"] if pos else token[:6]
@@ -1495,6 +1517,29 @@ class Bot:
 
     # ---------- Dashboard-Daten ----------
     def snapshot(self):
+        """Dashboard-Daten; bei mehreren Chains alles zusammen (eine Kasse, alle Positionen, alle Trades)."""
+        snap = self.own_snapshot()
+        if self is not self.family[0] or len(self.family) == 1:
+            return snap
+        snap["chains"] = [b.chain for b in self.family]
+        for other in self.family[1:]:
+            o = other.own_snapshot()
+            snap["positions"] = sorted(snap["positions"] + o["positions"], key=lambda x: -x["pnl_pct"])
+            snap["closed"] = sorted(snap["closed"] + o["closed"], key=lambda t: -t.get("closed_at", 0))[:30]
+            snap["activity"] = sorted(snap["activity"] + o["activity"], key=lambda a: -a["ts"])[:120]
+            for k in ("trades", "wins", "losses", "partials", "realized_pnl", "errors", "scan_rate_min"):
+                if isinstance(snap.get(k), (int, float)) and isinstance(o.get(k), (int, float)):
+                    snap[k] += o[k]
+            for k, v in (o.get("stats") or {}).items():
+                if isinstance(v, (int, float)) and isinstance(snap["stats"].get(k), (int, float)):
+                    snap["stats"][k] += v
+                elif isinstance(v, dict) and isinstance(snap["stats"].get(k), dict):
+                    for kk, vv in v.items():
+                        if isinstance(vv, (int, float)):
+                            snap["stats"][k][kk] = snap["stats"][k].get(kk, 0) + vv
+        return snap
+
+    def own_snapshot(self):
         with self.lock:
             eq = self.equity()
             start = self.cfg["start_balance_usd"]
@@ -1515,7 +1560,7 @@ class Bot:
                     "hist": downsample(p.get("hist") or [], 900),
                     "entry_hist": p.get("entry_hist") or [[p["opened_at"], p.get("first_entry_price") or p["entry_price"]]],
                     "events": p.get("events") or [[p["opened_at"], "Kauf", p.get("first_entry_price") or p["entry_price"]]],
-                    "token": p["token"], "pair": p.get("pair"), "chart": (p.get("info") or {}).get("chart"),
+                    "token": p["token"], "pair": p.get("pair"), "chart": (p.get("info") or {}).get("chart"), "chain": self.chain,
                 })
             hist = self.equity_history[-600:]
             ranges = self.equity_ranges()
@@ -1558,17 +1603,43 @@ def export_snapshot(bot, path):
     os.replace(tmp, path)
 
 
+def chain_state_path(state_path, chain):
+    return os.path.splitext(state_path)[0] + f"_{chain}.json"
+
+
+def build_bot(cfg, state_path):
+    """Hauptbot (cfg["chain"]) plus weitere Chains aus cfg["extra_chains"], alle mit einer gemeinsamen Kasse."""
+    bot = Bot(cfg, state_path)
+    for chain in cfg.get("extra_chains") or []:
+        sub_cfg = json.loads(json.dumps(cfg))
+        sub_cfg["chain"] = chain
+        sub_cfg["extra_chains"] = []
+        sub = Bot(sub_cfg, chain_state_path(state_path, chain), CHAIN_NAMES.get(chain, chain))
+        bot.join_chain(sub)
+    return bot
+
+
+def start_all(bot):
+    for b in bot.family:
+        b.start()
+
+
+def save_all(bot):
+    for b in bot.family:
+        b.save_state()
+
+
 def run_headless(cfg, state_path, args):
     """Laeuft ohne Tastatur und Webserver eine feste Zeit, schreibt regelmaessig Stand und Dashboard-Daten."""
-    bot = Bot(cfg, state_path)
-    bot.start()
+    bot = build_bot(cfg, state_path)
+    start_all(bot)
     end = now() + args.minutes * 60
     print(f"  Grok Bot (PAPER) laeuft ohne Bildschirm fuer {args.minutes:.0f} Minuten", flush=True)
     try:
         while now() < end:
             time.sleep(min(args.export_every, max(end - now(), 0.1)))
             try:
-                bot.save_state()
+                save_all(bot)
                 if args.export:
                     export_snapshot(bot, args.export)
             except Exception as e:  # ein Fehler beim Speichern darf den Lauf nicht beenden
@@ -1577,7 +1648,7 @@ def run_headless(cfg, state_path, args):
         pass
     finally:
         bot.stop_event.set()
-        bot.save_state()
+        save_all(bot)
         if args.export:
             export_snapshot(bot, args.export)
         print("Lauf beendet, Stand gespeichert.", flush=True)
@@ -1658,11 +1729,13 @@ def main():
     with open(cfg_path, encoding="utf-8") as f:
         cfg = json.load(f)
     setup_currency(cfg)
-    if args.reset and os.path.exists(state_path):
-        os.remove(state_path)
+    if args.reset:
+        for path in [state_path] + [chain_state_path(state_path, c) for c in cfg.get("extra_chains") or []]:
+            if os.path.exists(path):
+                os.remove(path)
 
     if args.rug:
-        ok, msg = Bot(cfg, state_path).report_rug(args.rug)
+        ok, msg = build_bot(cfg, state_path).report_rug(args.rug)
         print(msg + (" Der Bot meidet kuenftig ihre Coins und verkauft offene Positionen." if ok else ""))
         return
 
@@ -1671,8 +1744,8 @@ def main():
         return
 
     while True:
-        bot = Bot(cfg, state_path)
-        bot.start()
+        bot = build_bot(cfg, state_path)
+        start_all(bot)
         Handler.bot = bot
         srv = ThreadingHTTPServer((args.host, args.port), Handler)
         srv.handle_error = lambda request, client_address: None  # abgebrochene Verbindungen nicht ins Log

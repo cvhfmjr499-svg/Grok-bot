@@ -35,6 +35,7 @@ jobs:
           python scripts/build_docs.py
           save() {
             git add state.json dev_blacklist.json docs 2>/dev/null || true  # docs enthaelt auch docs/screenshots
+            git add state_*.json 2>/dev/null || true  # Stand weiterer Chains (z. B. state_robinhood.json)
             git diff --cached --quiet && return 0
             git commit -q -m "Bot-Lauf: Stand $(date -u +%H:%M) UTC"
             # Der Bot schreibt waehrenddessen weiter in seine Dateien -> --autostash, sonst verweigert git den Abgleich
