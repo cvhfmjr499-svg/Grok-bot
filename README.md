@@ -29,6 +29,7 @@ Ein 5-Agenten-Bot wie in den TikTok-Videos, aber **ehrlich**: Er nutzt echte Liv
 ## Auf GitHub (läuft ohne Handy und PC)
 - **GitHub Actions** (`.github/workflows/bot-run.yml`) startet den Bot automatisch. Jeder Lauf dauert ca. 55 Minuten, danach startet sofort der nächste. Jede Minute speichert er seinen Stand (`state.json`, `dev_blacklist.json`) im Repo.
 - **Handy-Seite:** https://cvhfmjr499-svg.github.io/Grok-bot/ (GitHub Pages aus dem Ordner `docs/`). Sie zeigt den gespeicherten Stand, also mit ca. 1–2 Minuten Verzögerung, und lädt sich alle 15 Sekunden neu.
+- **Screenshots:** Nach jedem Lauf speichert der Bot ein Bild der Handy-Seite in `docs/screenshots/` (Name = Datum und Uhrzeit in UTC, die letzten 72 bleiben). Ansehen: https://github.com/cvhfmjr499-svg/Grok-bot/tree/main/docs/screenshots
 - **Einstellungen ändern:** `config.json` im Repo bearbeiten. Der nächste Lauf übernimmt sie.
 - **Neu starten mit 1.000 €:** `state.json` im Repo löschen.
 - **Anhalten:** auf GitHub unter Actions → „Grok Bot (Dauerbetrieb)“ → „…“ → „Disable workflow“.
