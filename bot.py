@@ -696,6 +696,8 @@ class Bot:
             return False, f"Rug im Chart: Kerze mit {st['worst_candle_pct']:.0f}% am {when}", st
         if c.get("max_below_ath_pct") and st["from_ath_pct"] <= -c["max_below_ath_pct"]:
             return False, f"toter Coin: {st['from_ath_pct']:.0f}% unter dem Hoch", st
+        if c.get("dead_volume_any_pct") and st["vol_vs_max_pct"] < c["dead_volume_any_pct"] and st["hours"] >= 2:
+            return False, f"toter Coin: Volumen nur {st['vol_vs_max_pct']:.1f}% vom Maximum", st
         if (c.get("dead_below_ath_pct") and st["from_ath_pct"] <= -c["dead_below_ath_pct"]
                 and st["vol_vs_max_pct"] < c.get("dead_volume_pct", 2.5)):
             return False, f"toter Coin: {st['from_ath_pct']:.0f}% unter dem Hoch, Volumen nur {st['vol_vs_max_pct']:.1f}% vom Maximum", st
@@ -749,6 +751,11 @@ class Bot:
         shrink = (1 - depth / max(past)) * 100 if past and max(past) > 0 and depth > 0 else 0  # Liquiditaet abgezogen
         ch_h6, ch_h24 = fnum(ch.get("h6")), fnum(ch.get("h24"))
         avg_trade, tx_n = self.avg_trade_usd(pair)
+        tx5 = (pair.get("txns") or {}).get("m5") or {}
+        tx_m5 = fnum(tx5.get("buys")) + fnum(tx5.get("sells"))
+        vol_m5 = fnum((pair.get("volume") or {}).get("m5"))
+        avg_hour = vol_h24 / min(24, max(age_min / 60, 1))
+        vol_trend = max(vol_h1, vol_m5 * 12) / avg_hour if avg_hour > 0 else 1  # laeuft gerade wieder an -> zaehlt auch
         copycat = self.copycat_of(pair) if c.get("block_copycats", True) else None
         checks = [
             ((pair["baseToken"].get("symbol") or "").upper() not in QUOTE_SYMBOLS, "Basis-Token (kein Memecoin)", 10080),
@@ -779,6 +786,10 @@ class Bot:
             (not c.get("min_avg_trade_usd") or tx_n < 300 or avg_trade >= c["min_avg_trade_usd"],
              f"Fake-Handel (nur ${avg_trade:.1f} pro Trade bei {tx_n:.0f} Trades/1h)", 360),
             (not copycat, f"Nachahmer von gemeldetem Rug ${copycat}", 10080),
+            # toter Coin: gerade handelt kaum jemand / Volumen stirbt (aktuelle Stunde < 30 % einer normalen Stunde)
+            (tx_m5 >= c.get("min_trades_m5", 0), f"toter Coin: nur {tx_m5:.0f} Trades in 5 min", 15),
+            (not c.get("min_volume_trend") or age_min < 120 or vol_trend >= c["min_volume_trend"],
+             f"toter Coin: Volumen stirbt (aktuelle Stunde {vol_trend:.0%} einer normalen Stunde)", 30),
         ]
         for ok, reason, recheck in checks:
             if not ok:
@@ -972,6 +983,17 @@ class Bot:
                         if (rw.get("enabled") and s5 >= rw.get("min_sells_m5", 30) and s5 >= rw.get("sell_buy_ratio_m5", 5) * max(b5, 1)
                                 and pulled10 >= rw.get("panic_lp_pull_pct", 8)):
                             self.rug_alarm.setdefault(token, f"{s5:.0f} Verkaeufe vs. {b5:.0f} Kaeufe in 5 min und Liquiditaet abgezogen (-{pulled10:.0f}%)")
+                        dv = r.get("dead_volume_exit", {})
+                        if dv.get("enabled"):
+                            n5 = b5 + s5
+                            v1h = fnum((p.get("volume") or {}).get("h1"))
+                            if n5 <= dv.get("max_trades_m5", 3) and v1h < dv.get("max_volume_h1_usd", 3000):
+                                pos.setdefault("dead_since", now())
+                                if now() - pos["dead_since"] >= dv.get("minutes", 10) * 60 and token not in self.chart_exit:
+                                    self.chart_exit[token] = (f"Toter Coin: kein Volumen mehr ({n5:.0f} Trades in 5 min, "
+                                                              f"${v1h:,.0f} in 1 h, seit {dv.get('minutes', 10)} min)")
+                            else:
+                                pos.pop("dead_since", None)
                         avg_t, n_t = self.avg_trade_usd(p)
                         min_avg = self.cfg["analyst"].get("min_avg_trade_usd")
                         if rw.get("enabled") and min_avg and n_t >= 300 and avg_t < min_avg:

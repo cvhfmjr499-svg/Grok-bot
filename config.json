@@ -44,7 +44,10 @@
     "max_below_ath_pct": 95,
     "dead_below_ath_pct": 80,
     "dead_volume_pct": 2.5,
-    "chart_optional_below_min": 180
+    "chart_optional_below_min": 180,
+    "min_trades_m5": 5,
+    "min_volume_trend": 0.3,
+    "dead_volume_any_pct": 2
   },
   "sniper": {
     "position_pct_of_equity": 5,
@@ -118,6 +121,12 @@
     "breakeven": {
       "activate_pct": 20,
       "lock_pct": 3
+    },
+    "dead_volume_exit": {
+      "enabled": true,
+      "max_trades_m5": 3,
+      "max_volume_h1_usd": 3000,
+      "minutes": 10
     }
   },
   "fomo": {
