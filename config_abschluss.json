@@ -41,7 +41,13 @@
     "max_crash_h6_pct": 60,
     "max_crash_h24_pct": 75,
     "min_avg_trade_usd": 8,
-    "block_copycats": true
+    "block_copycats": true,
+    "chart_check": true,
+    "max_candle_crash_pct": 90,
+    "max_below_ath_pct": 95,
+    "dead_below_ath_pct": 80,
+    "dead_volume_pct": 2.5,
+    "chart_optional_below_min": 180
   },
   "sniper": {
     "position_pct_of_equity": 5,
@@ -87,7 +93,8 @@
       "max_insider_pct": 15,
       "sell_buy_ratio_h6": 2.5,
       "liq_drain_pct_90m": 15,
-      "insider_dump_pts": 1.5
+      "insider_dump_pts": 1.5,
+      "crash_pct_2m": 30
     },
     "partial_tp": {
       "enabled": true,

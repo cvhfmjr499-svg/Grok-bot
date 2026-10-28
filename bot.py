@@ -223,6 +223,44 @@ def http_json(url, timeout=15):
         return json.loads(r.read().decode())
 
 
+_GECKO_LOCK = threading.Lock()
+_GECKO_LAST = [0.0]
+
+
+def gecko_json(url, gap_s=2.2):
+    """GeckoTerminal erlaubt ca. 30 Abfragen pro Minute -> alle Abfragen (Scout + Chart-Check) nacheinander mit Abstand."""
+    with _GECKO_LOCK:
+        wait = _GECKO_LAST[0] + gap_s - time.time()
+        if wait > 0:
+            time.sleep(wait)
+        try:
+            return http_json(url)
+        finally:
+            _GECKO_LAST[0] = time.time()
+
+
+def chart_stats(candles):
+    """Kompletter Chart seit Start: candles = [[ts, open, high, low, close, volume], ...] (Reihenfolge egal).
+    -> Abstand zum Allzeithoch, groesster Absturz in einer Kerze (+ wann), aktuelles Volumen im Vergleich zum Maximum."""
+    c = sorted(x for x in candles if fnum(x[4]) > 0)
+    if len(c) < 4:
+        return None
+    t0 = c[0][0]
+    body = [x for x in c if x[0] >= t0 + 1800] or c  # Start-Spike der ersten 30 min zaehlt nicht als Hoch
+    ath = max(fnum(x[2]) for x in body)
+    last = fnum(c[-1][4])
+    crash, crash_ts = 0.0, None
+    for prev, cur in zip(c, c[1:]):
+        d = (fnum(cur[3]) / fnum(prev[4]) - 1) * 100 if fnum(prev[4]) > 0 else 0
+        if d < crash:
+            crash, crash_ts = d, cur[0]
+    vmax = max(fnum(x[5]) for x in c)
+    vnow = sum(fnum(x[5]) for x in c[-4:]) / 4
+    return {"from_ath_pct": round((last / ath - 1) * 100, 1) if ath else 0, "worst_candle_pct": round(crash, 1),
+            "worst_candle_ts": crash_ts, "vol_vs_max_pct": round(vnow / vmax * 100, 1) if vmax else 0,
+            "hours": round((c[-1][0] - t0) / 3600, 1), "candles": len(c)}
+
+
 def fnum(x, default=0.0):
     try:
         return float(x)
@@ -279,6 +317,7 @@ class Bot:
         self.closed = []          # abgeschlossene Trades
         self.equity_history = []  # [ts, equity], fein: letzte 2 h
         self.equity_long = []  # [ts, equity], alle 5 min, 60 Tage
+        self.chart_cache = {}  # Pool -> (Zeit, chart_stats)
         self.load_state()
 
     # ---------- Persistenz ----------
@@ -374,7 +413,7 @@ class Bot:
         if now() < self.gecko_next.get(path, 0):
             return []
         try:
-            data = http_json(self.gecko + path).get("data", [])
+            data = gecko_json(self.gecko + path).get("data", [])
             self.gecko_next[path] = now() + every_s
         except urllib.error.HTTPError as e:
             self.gecko_next[path] = now() + (30 if e.code == 429 else every_s)
@@ -570,6 +609,40 @@ class Bot:
             return False, f"LP nur {lp_locked:.0f}% gesperrt", dict(extra, recheck_min=60)
         return True, "ok", extra
 
+    def chart_check(self, pair, c):
+        """Kompletten Chart pruefen (15-min-Kerzen seit Start, bei jungen Coins 1-min-Kerzen).
+        -> (ok, Grund, Werte). Rug-Muster: Absturz-Kerze, toter Coin weit unter dem Hoch ohne Volumen."""
+        pool = pair.get("pairAddress")
+        hit = self.chart_cache.get(pool)
+        if hit and now() - hit[0] < 600:
+            st = hit[1]
+        else:
+            st = None
+            try:
+                for agg, unit in ((15, "minute"), (1, "minute")):
+                    url = f"{self.gecko}/pools/{pool}/ohlcv/{unit}?aggregate={agg}&limit=1000&currency=usd"
+                    st = chart_stats(gecko_json(url)["data"]["attributes"]["ohlcv_list"])
+                    if st and st["hours"] >= 3:
+                        break  # genug Verlauf; sonst junge Coins mit 1-min-Kerzen genauer ansehen
+            except urllib.error.HTTPError as e:
+                if e.code != 404:
+                    return None, "Chart nicht abrufbar", {}
+                st = None  # GeckoTerminal kennt den Pool (noch) nicht
+            except Exception:
+                return None, "Chart nicht abrufbar", {}
+            self.chart_cache[pool] = (now(), st)
+        if not st:
+            return None, "Chart noch zu kurz", {}
+        if c.get("max_candle_crash_pct") and st["worst_candle_pct"] <= -c["max_candle_crash_pct"]:
+            when = time.strftime("%d.%m. %H:%M", time.localtime(st["worst_candle_ts"])) if st["worst_candle_ts"] else "?"
+            return False, f"Rug im Chart: Kerze mit {st['worst_candle_pct']:.0f}% am {when}", st
+        if c.get("max_below_ath_pct") and st["from_ath_pct"] <= -c["max_below_ath_pct"]:
+            return False, f"toter Coin: {st['from_ath_pct']:.0f}% unter dem Hoch", st
+        if (c.get("dead_below_ath_pct") and st["from_ath_pct"] <= -c["dead_below_ath_pct"]
+                and st["vol_vs_max_pct"] < c.get("dead_volume_pct", 2.5)):
+            return False, f"toter Coin: {st['from_ath_pct']:.0f}% unter dem Hoch, Volumen nur {st['vol_vs_max_pct']:.1f}% vom Maximum", st
+        return True, "Chart ok", st
+
     @staticmethod
     def avg_trade_usd(pair):
         """Durchschnittliche Tradegroesse der letzten Stunde -> (Dollar pro Trade, Anzahl Trades)."""
@@ -706,6 +779,18 @@ class Bot:
                 return False, f"RugCheck-Score {score:.0f} zu hoch", dict(info, recheck_min=360)
             if lp < c["min_lp_locked_pct"]:
                 return False, f"LP nur {lp:.0f}% gesperrt", dict(info, recheck_min=60)
+        if c.get("chart_check", True):
+            ok, reason, st = self.chart_check(pair, c)
+            if st:
+                info["chart"] = st
+            if ok is None:
+                # junge Coins hat GeckoTerminal oft noch nicht erfasst -> dann passen die Live-Rug-Waechter auf;
+                # aeltere Coins ohne pruefbaren Chart werden nicht gekauft
+                if not (reason == "Chart noch zu kurz" and age_min < c.get("chart_optional_below_min", 180)):
+                    return False, reason, dict(info, recheck_min=5)
+                info["chart_note"] = "Chart noch zu kurz"
+            if not ok:
+                return False, reason, dict(info, recheck_min=1440)
         return True, "alle Checks bestanden", info
 
     # ---------- Agent 3: Sniper ----------
@@ -830,6 +915,11 @@ class Bot:
                         if rw.get("enabled") and losing and recent and pos["last_liq"] < max(recent) * (1 - rw.get("liq_drain_pct_90m", 15) / 100):
                             self.rug_alarm.setdefault(token, f"Slow-Rug: Liquiditaet fliesst ab (-{(1 - pos['last_liq'] / max(recent)) * 100:.0f}% in 90 min)")
                         h = pos.setdefault("hist", [])
+                        crash = rw.get("crash_pct_2m")
+                        if rw.get("enabled") and crash and h:
+                            top = max((v for ts, v in h[-240:] if now() - ts <= 120), default=0)
+                            if top and pos["last_price"] <= top * (1 - crash / 100):
+                                self.rug_alarm.setdefault(token, f"Absturz {(pos['last_price'] / top - 1) * 100:.0f}% in 2 min (Rug-Kerze)")
                         h.append([now(), pos["last_price"]])
                         if len(h) > 3600:
                             old = h[:1800]
@@ -1322,7 +1412,7 @@ class Bot:
                     "hist": downsample(p.get("hist") or [], 900),
                     "entry_hist": p.get("entry_hist") or [[p["opened_at"], p.get("first_entry_price") or p["entry_price"]]],
                     "events": p.get("events") or [[p["opened_at"], "Kauf", p.get("first_entry_price") or p["entry_price"]]],
-                    "token": p["token"], "pair": p.get("pair"),
+                    "token": p["token"], "pair": p.get("pair"), "chart": (p.get("info") or {}).get("chart"),
                 })
             hist = self.equity_history[-600:]
             ranges = self.equity_ranges()
