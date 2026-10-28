@@ -277,7 +277,8 @@ class Bot:
         self.cash = cfg["start_balance_usd"]
         self.positions = {}       # token -> dict
         self.closed = []          # abgeschlossene Trades
-        self.equity_history = []  # [ts, equity]
+        self.equity_history = []  # [ts, equity], fein: letzte 2 h
+        self.equity_long = []  # [ts, equity], alle 5 min, 60 Tage
         self.load_state()
 
     # ---------- Persistenz ----------
@@ -292,6 +293,7 @@ class Bot:
             self.positions = s["positions"]
             self.closed = s["closed"]
             self.equity_history = s.get("equity_history", [])[-2000:]
+            self.equity_long = s.get("equity_long") or downsample(self.equity_history, 200)
             self.cooldown = s.get("cooldown", {})
             self.token_losses = s.get("token_losses", {})
             self.started_at = s.get("started_at", self.started_at)
@@ -304,7 +306,7 @@ class Bot:
         with self.lock:
             s = {
                 "cash": self.cash, "positions": self.positions, "closed": self.closed[-1000:],
-                "equity_history": self.equity_history[-2000:], "cooldown": self.cooldown,
+                "equity_history": self.equity_history[-2000:], "equity_long": self.equity_long, "cooldown": self.cooldown,
                 "token_losses": self.token_losses,
                 "started_at": self.started_at, "start_balance_usd": self.cfg["start_balance_usd"],
             }
@@ -568,6 +570,27 @@ class Bot:
             return False, f"LP nur {lp_locked:.0f}% gesperrt", dict(extra, recheck_min=60)
         return True, "ok", extra
 
+    @staticmethod
+    def avg_trade_usd(pair):
+        """Durchschnittliche Tradegroesse der letzten Stunde -> (Dollar pro Trade, Anzahl Trades)."""
+        tx = (pair.get("txns") or {}).get("h1") or {}
+        n = fnum(tx.get("buys")) + fnum(tx.get("sells"))
+        return fnum((pair.get("volume") or {}).get("h1")) / max(n, 1), n
+
+    def copycat_of(self, pair):
+        """Gleicher Name/Ticker wie ein gemeldeter Rug (z. B. zweiter $USDF nach dem USDF-Rug) -> Ticker des Rugs."""
+        norm = lambda x: re.sub(r"[^A-Z0-9]", "", (x or "").upper())
+        sym, name = norm(pair["baseToken"].get("symbol")), norm(pair["baseToken"].get("name"))
+        token = pair["baseToken"]["address"]
+        for b in list(self.blacklist.values()):
+            if b.get("token") == token:
+                continue
+            if sym and len(sym) >= 3 and norm(b.get("symbol")) == sym:
+                return b.get("symbol")
+            if name and len(name) >= 6 and norm(b.get("name")) == name:
+                return b.get("symbol")
+        return None
+
     def analyze(self, pair):
         c = self.cfg["analyst"]
         liq = fnum((pair.get("liquidity") or {}).get("usd"))
@@ -592,6 +615,9 @@ class Bot:
         del lh[:-30]
         past = [l for ts, l in lh if now() - 5400 <= ts < now() - 600]
         shrink = (1 - liq / max(past)) * 100 if past and max(past) > 0 else 0
+        ch_h6, ch_h24 = fnum(ch.get("h6")), fnum(ch.get("h24"))
+        avg_trade, tx_n = self.avg_trade_usd(pair)
+        copycat = self.copycat_of(pair) if c.get("block_copycats", True) else None
         checks = [
             ((pair["baseToken"].get("symbol") or "").upper() not in QUOTE_SYMBOLS, "Basis-Token (kein Memecoin)", 10080),
             (self.token_losses.get(token, 0) < c.get("max_losses_per_token", 99), "zu viele Verluste mit diesem Coin", 10080),
@@ -614,6 +640,13 @@ class Bot:
             (ch_h1 >= c["min_change_h1_pct"], f"faellt ({ch_h1:+.0f}% 1h)", 10),
             (ch_m5 <= c["max_change_m5_pct"], f"schon gepumpt ({ch_m5:+.0f}% 5m)", 10),
             (ch_h1 <= c["max_change_h1_pct"], f"schon gepumpt ({ch_h1:+.0f}% 1h)", 10),
+            # schon gerugt: Kurs in 6 h / 24 h abgestuerzt, die letzte Stunde sieht nur nach Erholung aus (z. B. $USDF -99 %)
+            (not c.get("max_crash_h6_pct") or ch_h6 > -c["max_crash_h6_pct"], f"schon gerugt ({ch_h6:+.0f}% 6h)", 1440),
+            (not c.get("max_crash_h24_pct") or ch_h24 > -c["max_crash_h24_pct"], f"schon gerugt ({ch_h24:+.0f}% 24h)", 1440),
+            # Fake-Handel: tausende Mini-Trades von Bots (USDF: 1-4 $ pro Trade, echte Coins 20-100 $)
+            (not c.get("min_avg_trade_usd") or tx_n < 300 or avg_trade >= c["min_avg_trade_usd"],
+             f"Fake-Handel (nur ${avg_trade:.1f} pro Trade bei {tx_n:.0f} Trades/1h)", 360),
+            (not copycat, f"Nachahmer von gemeldetem Rug ${copycat}", 10080),
         ]
         for ok, reason, recheck in checks:
             if not ok:
@@ -782,6 +815,14 @@ class Bot:
                         losing = pos["last_price"] < pos["entry_price"]
                         if rw.get("enabled") and losing and rw.get("sell_buy_ratio_h6") and s6 >= 100 and s6 >= rw["sell_buy_ratio_h6"] * max(b6, 1):
                             self.rug_alarm.setdefault(token, f"Slow-Rug: {s6:.0f} Verkaeufe vs. {b6:.0f} Kaeufe in 6 h")
+                        avg_t, n_t = self.avg_trade_usd(p)
+                        min_avg = self.cfg["analyst"].get("min_avg_trade_usd")
+                        if rw.get("enabled") and min_avg and n_t >= 300 and avg_t < min_avg:
+                            self.rug_alarm.setdefault(token, f"Fake-Handel (${avg_t:.1f} pro Trade bei {n_t:.0f} Trades/1h)")
+                        if rw.get("enabled") and self.cfg["analyst"].get("block_copycats", True):
+                            cc = self.copycat_of(p)
+                            if cc:
+                                self.rug_alarm.setdefault(token, f"Nachahmer von gemeldetem Rug ${cc}")
                         lq = pos.setdefault("liq_hist", [])
                         lq.append([now(), pos["last_liq"]])
                         del lq[:-1500]
@@ -976,16 +1017,36 @@ class Bot:
         if "Rug-Gefahr" in reason or trade["pnl_pct"] <= -rug_cfg.get("rug_loss_pct", 40):
             dev = self.creator_of(token)
             if dev and dev_blacklist_add(self.blacklist_path, dev, {
-                    "symbol": pos["symbol"], "token": token, "chain": self.chain, "ts": now(),
+                    "symbol": pos["symbol"], "name": pos.get("name"), "token": token, "chain": self.chain, "ts": now(),
                     "reason": reason, "pnl_pct": round(trade["pnl_pct"], 1)}):
                 self.log("analyst", f"Dev-Wallet {dev[:6]}...{dev[-4:]} von ${pos['symbol']} gesperrt - kuenftig alle ihre Coins meiden", "warn")
         self.save_state()
 
     def record_equity(self):
+        """Kontostand-Verlauf: fein (alle 10 s, letzte 2 h) und grob (alle 5 min, 60 Tage) fuer den 24h/7d/30d-Chart."""
         with self.lock:
-            self.equity_history.append([now(), round(self.equity(), 2)])
-            if len(self.equity_history) > 4000:
-                self.equity_history = self.equity_history[::2]
+            t, eq = now(), round(self.equity(), 2)
+            if not self.equity_history or t - self.equity_history[-1][0] >= 10:
+                self.equity_history.append([t, eq])
+                while self.equity_history and t - self.equity_history[0][0] > 7200:
+                    self.equity_history.pop(0)
+            if not self.equity_long or t - self.equity_long[-1][0] >= 300:
+                self.equity_long.append([t, eq])
+                while self.equity_long and t - self.equity_long[0][0] > 60 * 86400:
+                    self.equity_long.pop(0)
+
+    def equity_ranges(self, n=300):
+        """Kontostand je Zeitraum (1h, 24h, 7d, 30d, All), je hoechstens n Punkte, letzter Punkt = jetzt."""
+        with self.lock:
+            fine, coarse = list(self.equity_history), list(self.equity_long)
+            cur = [now(), round(self.equity(), 2)]
+        cut = fine[0][0] if fine else cur[0]
+        merged = [x for x in coarse if x[0] < cut] + fine + [cur]
+        out = {}
+        for key, span in (("1h", 3600), ("24h", 86400), ("7d", 7 * 86400), ("30d", 30 * 86400), ("all", None)):
+            pts = merged if span is None else [x for x in merged if x[0] >= cur[0] - span]
+            out[key] = downsample(pts, n)
+        return out
 
     # ---------- Schleifen ----------
     def scout_loop(self):
@@ -1201,7 +1262,7 @@ class Bot:
         dev = self.creator_of(token)
         msg = f"${sym}: " + ("Position wird sofort verkauft. " if pos else "keine offene Position. ")
         if dev:
-            added = dev_blacklist_add(self.blacklist_path, dev, {"symbol": sym, "token": token, "chain": self.chain,
+            added = dev_blacklist_add(self.blacklist_path, dev, {"symbol": sym, "name": (pos or {}).get("name"), "token": token, "chain": self.chain,
                                                                   "ts": now(), "reason": f"von {who} als Rug gemeldet"})
             msg += f"Dev-Wallet {dev[:6]}...{dev[-4:]} " + ("gesperrt." if added else "war schon gesperrt.")
         else:
@@ -1264,6 +1325,7 @@ class Bot:
                     "token": p["token"], "pair": p.get("pair"),
                 })
             hist = self.equity_history[-600:]
+            ranges = self.equity_ranges()
             return {
                 "mode": "PAPER", "now": now(), "started_at": self.started_at,
                 "start_balance": start, "equity": eq, "cash": self.cash,
@@ -1287,7 +1349,7 @@ class Bot:
                     "wallets": len(self.fomo_stats["wallets"]),
                     "hot": [{"mint": m, "symbol": self.symbols.get(m), "buyers": b, "sellers": sl} for m, b, sl in self.fomo_hot(8)],
                 },
-                "equity_history": hist,
+                "equity_history": hist, "equity_ranges": ranges,
                 "config": self.cfg,
             }
 

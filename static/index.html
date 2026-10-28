@@ -43,7 +43,12 @@
   .equity .cents { color: var(--muted); font-size: 26px; }
   .pnlrow { display: flex; justify-content: space-between; font-size: 14px; color: var(--muted); }
   .up { color: var(--green); font-weight: 600; } .down { color: var(--red); font-weight: 600; }
-  svg.spark { width: 100%; height: 90px; display: block; margin-top: 6px; }
+  svg.spark { width: 100%; height: 120px; display: block; }
+  .eqchart { position: relative; margin-top: 8px; touch-action: pan-y; user-select: none; -webkit-user-select: none; cursor: crosshair; }
+  .eqtip { position: absolute; top: -2px; transform: translateX(-50%); font-size: 11px; font-weight: 600; color: var(--muted); background: var(--bg); padding: 2px 7px; border-radius: 7px; pointer-events: none; display: none; white-space: nowrap; }
+  .ranges { display: flex; gap: 4px; justify-content: flex-end; margin-top: 6px; }
+  .ranges button { border: 0; background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; padding: 4px 10px; border-radius: 9px; cursor: pointer; }
+  .ranges button.on { background: var(--bg); color: var(--text); }
   .agent { display: flex; align-items: center; gap: 12px; padding: 7px 0; }
   .ico { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; color: #fff; font-size: 18px; flex: none; }
   .agent .nm { width: 120px; flex: none; } .agent .nm b { display: block; } .agent .nm span { color: var(--muted); font-size: 12px; }
@@ -132,7 +137,8 @@
       <div class="eq-label"><span id="eqlabel">Equity</span><span class="mult" id="mult">1.00×</span></div>
       <div class="equity" id="equity">$0<span class="cents">.00</span></div>
       <div class="pnlrow"><span id="pnl">+$0.00 (0%)</span><span id="tradeinfo">0 trades</span></div>
-      <svg class="spark" id="spark" viewBox="0 0 400 90" preserveAspectRatio="none"></svg>
+      <div class="eqchart" id="eqchart"><svg class="spark" id="spark" viewBox="0 0 400 120" preserveAspectRatio="none"></svg><div class="eqtip" id="eqtip"></div></div>
+      <div class="ranges" id="ranges"><button data-r="1h">1h</button><button data-r="24h" class="on">24h</button><button data-r="7d">7d</button><button data-r="30d">30d</button><button data-r="all">All</button></div>
       <div class="goal-track" id="goal"></div>
       <div class="pnlrow"><span id="goaltxt">Goal</span><span id="cash">Cash</span></div>
     </div>
@@ -200,19 +206,81 @@ const t = ts => new Date(ts * 1000).toLocaleTimeString("de-DE");
 const ago = m => m < 60 ? m.toFixed(0) + " min" : (m / 60).toFixed(1) + " h";
 const colors = { scout: "var(--blue)", analyst: "var(--purple)", sniper: "var(--orange)", risk: "var(--pink)", banker: "var(--green)", fomo: "var(--text)", system: "var(--muted)" };
 
-function spark(hist, start) {
-  const svg = $("spark");
-  if (hist.length < 2) { svg.innerHTML = ""; return; }
-  const ys = hist.map(h => h[1]);
-  let lo = Math.min(...ys, start), hi = Math.max(...ys, start);
-  if (hi - lo < 1) { hi += 1; lo -= 1; }
-  const x = i => (i / (hist.length - 1)) * 400, y = v => 85 - ((v - lo) / (hi - lo)) * 80;
-  const pts = ys.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
-  const up = ys[ys.length - 1] >= start, col = up ? "var(--green)" : "var(--red)";
-  svg.innerHTML = `<line x1="0" x2="400" y1="${y(start)}" y2="${y(start)}" stroke="var(--muted)" stroke-dasharray="3 4" stroke-width="1" opacity=".5"/>
-    <polygon points="0,90 ${pts} 400,90" fill="${col}" opacity=".10"/>
-    <polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2.5" vector-effect="non-scaling-stroke"/>`;
+// Kontostand-Chart wie in der FOMO-App: Zeitraum waehlen, mit dem Finger ueber die Linie fahren -> Wert zu jeder Uhrzeit
+const EQ = { range: "24h", pts: [], scrub: null, live: null };
+try { EQ.range = localStorage.getItem("grok_range") || "24h"; } catch (e) {}
+function showEquity(v, ref, label) {
+  const [whole, cents] = CUR.eur ? usd(v).replace(" €", "").split(",").map((x, i) => i ? x + " €" : x) : usd(v).split(".");
+  $("equity").innerHTML = `${whole}<span class="cents">${CUR.eur ? "," : "."}${cents}</span>`;
+  const d = v - ref;
+  $("pnl").innerHTML = `<span class="${d >= 0 ? "up" : "down"}">${sgn(d)}${usd(d)} (${pct(ref ? d / ref * 100 : 0)})</span> <span style="color:var(--muted)">${label}</span>`;
 }
+function spark() {
+  const svg = $("spark"), pts = EQ.pts;
+  if (pts.length < 2) { svg.innerHTML = ""; return; }
+  const ys = pts.map(h => h[1]), ref = ys[0];
+  let lo = Math.min(...ys), hi = Math.max(...ys);
+  if (hi - lo < 0.5) { hi += 0.5; lo -= 0.5; }
+  const t0 = pts[0][0], t1 = pts[pts.length - 1][0];
+  const X = t => ((t - t0) / Math.max(t1 - t0, 1)) * 400, Y = v => 112 - ((v - lo) / (hi - lo)) * 104;
+  const line = a => a.map(h => `${X(h[0]).toFixed(1)},${Y(h[1]).toFixed(1)}`).join(" ");
+  const i = EQ.scrub ?? pts.length - 1, cur = pts[i];
+  const col = cur[1] >= ref ? "var(--green)" : "var(--red)";
+  const before = pts.slice(0, i + 1), after = pts.slice(i);
+  let html = `<line x1="0" x2="400" y1="${Y(ref).toFixed(1)}" y2="${Y(ref).toFixed(1)}" stroke="var(--muted)" stroke-dasharray="3 4" stroke-width="1" opacity=".45" vector-effect="non-scaling-stroke"/>
+    <polygon points="0,120 ${line(before)} ${X(cur[0]).toFixed(1)},120" fill="${col}" opacity=".12"/>
+    <polyline points="${line(before)}" fill="none" stroke="${col}" stroke-width="2.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>`;
+  if (after.length > 1) html += `<polyline points="${line(after)}" fill="none" stroke="${col}" stroke-width="2.5" opacity=".3" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>`;
+  if (EQ.scrub != null) html += `<line x1="${X(cur[0]).toFixed(1)}" x2="${X(cur[0]).toFixed(1)}" y1="0" y2="120" stroke="${col}" stroke-width="1" opacity=".6" vector-effect="non-scaling-stroke"/>`;
+  svg.innerHTML = html;
+  // Punkt als HTML (SVG ist gestreckt -> Kreis waere oval)
+  const box = $("eqchart"), w = box.clientWidth, dot = box.querySelector(".eqdot") || box.appendChild(Object.assign(document.createElement("div"), { className: "eqdot" }));
+  dot.style.cssText = `position:absolute;width:12px;height:12px;border-radius:50%;background:${col};border:2px solid var(--card);transform:translate(-50%,-50%);pointer-events:none;left:${X(cur[0]) / 400 * w}px;top:${Y(cur[1]) / 120 * 120}px`;
+  const tip = $("eqtip");
+  if (EQ.scrub != null) {
+    const d = new Date(cur[0] * 1000), long = t1 - t0 > 86400 * 1.5;
+    tip.textContent = long ? d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" }) + " " + d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
+                           : d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+    tip.style.left = Math.min(Math.max(X(cur[0]) / 400 * w, 30), w - 30) + "px";
+    tip.style.display = "block";
+    showEquity(cur[1], ref, long ? d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" }) : tip.textContent);
+  } else {
+    tip.style.display = "none";
+    if (EQ.live) showEquity(EQ.live.eq, ref, EQ.range === "all" ? "seit Start" : EQ.range);
+  }
+}
+function setEquityData(s) {
+  const r = s.equity_ranges || { "24h": s.equity_history };
+  EQ.pts = (r[EQ.range] || r["24h"] || []).slice();
+  EQ.live = { eq: s.equity };
+  if (EQ.pts.length) EQ.pts[EQ.pts.length - 1] = [s.now || EQ.pts[EQ.pts.length - 1][0], s.equity];
+  if (EQ.scrub != null && EQ.scrub >= EQ.pts.length) EQ.scrub = null;
+  spark();
+}
+(function () {
+  const box = $("eqchart");
+  const pick = ev => {
+    if (EQ.pts.length < 2) return;
+    const r = box.getBoundingClientRect(), x = Math.min(Math.max((ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left, 0), r.width);
+    const t0 = EQ.pts[0][0], t1 = EQ.pts[EQ.pts.length - 1][0], t = t0 + (x / r.width) * (t1 - t0);
+    let best = 0;
+    EQ.pts.forEach((p, i) => { if (Math.abs(p[0] - t) < Math.abs(EQ.pts[best][0] - t)) best = i; });
+    EQ.scrub = best; spark();
+  };
+  const end = () => { EQ.scrub = null; spark(); };
+  box.addEventListener("pointerdown", ev => { box.setPointerCapture && box.setPointerCapture(ev.pointerId); pick(ev); });
+  box.addEventListener("pointermove", ev => { if (ev.pointerType === "mouse" || ev.buttons) pick(ev); });
+  box.addEventListener("pointerup", end); box.addEventListener("pointercancel", end); box.addEventListener("pointerleave", ev => { if (ev.pointerType === "mouse") end(); });
+  document.querySelectorAll("#ranges button").forEach(b => {
+    b.classList.toggle("on", b.dataset.r === EQ.range);
+    b.onclick = () => {
+      EQ.range = b.dataset.r; EQ.scrub = null;
+      try { localStorage.setItem("grok_range", EQ.range); } catch (e) {}
+      document.querySelectorAll("#ranges button").forEach(x => x.classList.toggle("on", x === b));
+      if (window.LAST_STATE) setEquityData(window.LAST_STATE);
+    };
+  });
+})();
 
 const mc = v => !v ? "–" : "$" + (v >= 1e6 ? (v / 1e6).toFixed(2) + " Mio" : v >= 1e3 ? (v / 1e3).toFixed(1) + "k" : v.toFixed(0));
 function posChart(p) {
@@ -335,7 +403,7 @@ function render(s) {
   $("tradeinfo").textContent = `${s.trades} trades · ${wr}% win`;
   $("goaltxt").innerHTML = s.multiple >= s.goal ? `<span class="up">✓ Goal ${s.goal}× erreicht</span>` : `Goal: ${s.goal}× · noch ${usd(start * s.goal - eq, 0)}`;
   $("cash").textContent = `Cash ${usd(s.cash)}`;
-  spark(s.equity_history, start); goal(s.multiple, s.goal);
+  window.LAST_STATE = s; setEquityData(s); goal(s.multiple, s.goal);
 
   const st = s.stats, last = a => s.last_msg[a];
   $("pipesub").textContent = `5 agents · ${s.positions.length} in flight`;

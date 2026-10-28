@@ -37,7 +37,11 @@
     "max_insider_pct": 10,
     "max_sell_buy_ratio_h1": 3,
     "max_sell_buy_ratio_h6": 2.5,
-    "max_liq_shrink_pct_90m": 15
+    "max_liq_shrink_pct_90m": 15,
+    "max_crash_h6_pct": 60,
+    "max_crash_h24_pct": 75,
+    "min_avg_trade_usd": 8,
+    "block_copycats": true
   },
   "sniper": {
     "position_pct_of_equity": 5,
