@@ -101,5 +101,14 @@
   "ts": 1793225998.191772,
   "reason": "Soft-Rug-Alarm: Fake-Handel ($4.0 pro Trade bei 4033 Trades/1h) (Rug-Gefahr)",
   "pnl_pct": -1.2
+ },
+ "6vJjnQkrp7HF1Ns8EpAEMVLdtsX4ZeeHop7Uhn2cJu23": {
+  "symbol": "Something",
+  "name": "Believe in Something",
+  "token": "AZdhikmyj6ibsejv7EjML9SfNmuiMvwDrKXTEU2zpump",
+  "chain": "solana",
+  "ts": 1793226245.743924,
+  "reason": "Soft-Rug-Alarm: Slow-Rug: Liquiditaet fliesst ab (-21% in 90 min) (Rug-Gefahr)",
+  "pnl_pct": -21.2
  }
 }
