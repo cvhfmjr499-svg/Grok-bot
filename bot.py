@@ -325,6 +325,10 @@ class Bot:
         self.fomo_last_sig = None
         self.fomo_stats = {"tx_seen": 0, "tx_parsed": 0, "wallets": set()}
         self.fomo_checked = {}      # mint -> zuletzt wegen FOMO-Signal geprueft (ts)
+        self.pf_hot = []            # Pump.fun "Heiss": gerade meistgekaufte Coins (hot_loop)
+        self.pf_hot_view = []       # fuer die Seite: [symbol, mint, Volumen 5 min, Kaeufe 5 min, MCap, an der Boerse?]
+        self.pf_checked = {}
+        self.pf_dead = set()        # Pump.fun-Coins ohne Handel -> nicht mehr abfragen
         self.symbols = {}           # mint -> Symbol (fuers Dashboard)
         self.source = {}          # token -> Quelle, ueber die der Scout ihn gefunden hat
         self.cooldown = {}        # token -> nicht vor ts erneut kaufen
@@ -362,6 +366,9 @@ class Bot:
             self.closed = s["closed"]
             self.equity_history = s.get("equity_history", [])[-2000:]
             self.equity_long = s.get("equity_long") or downsample(self.equity_history, 200)
+            for m, ts in (s.get("pf_track") or {}).items():  # Pump.fun-Coins der letzten Stunden weiter verfolgen
+                self.first_seen.setdefault(m, ts)
+                self.source.setdefault(m, "PP-Neu")
             self.cooldown = s.get("cooldown", {})
             self.token_losses = s.get("token_losses", {})
             self.started_at = s.get("started_at", self.started_at)
@@ -375,6 +382,8 @@ class Bot:
             s = {
                 "cash": self.cash, "positions": self.positions, "closed": self.closed[-1000:],
                 "equity_history": self.equity_history[-2000:], "equity_long": self.equity_long, "cooldown": self.cooldown,
+                "pf_track": {m: ts for m, ts in self.first_seen.items() if now() - ts <= 6 * 3600 and m not in self.pf_dead
+                             and str(self.source.get(m, "")).startswith(("PP", "PF"))},
                 "token_losses": self.token_losses,
                 "started_at": self.started_at, "start_balance_usd": self.cfg["start_balance_usd"],
             }
@@ -529,6 +538,13 @@ class Bot:
                     found[a] = "FOMO"
                     self.fomo_checked[a] = t
                     self.next_check[a] = 0  # FOMO-Signal ist neu -> sofort pruefen
+
+        # Pump.fun "Heiss": die Coins mit den meisten Kaeufen/Volumen gerade (hot_loop) jede Minute sofort pruefen
+        for a in list(self.pf_hot):
+            if t - self.pf_checked.get(a, 0) >= 60:
+                found[a] = "PF-Heiss"
+                self.pf_checked[a] = t
+                self.next_check[a] = 0
 
         new, again = [], []
         for a in found:
@@ -1349,6 +1365,54 @@ class Bot:
             self.stop_event.wait(backoff)
             backoff = min(backoff * 2, 120)
 
+    def hot_loop(self):
+        """Pump.fun "Heiss"/Top-Performer ohne API-Schluessel: alle neuen Pump.fun-Coins der letzten Stunden (Live-Stream)
+        jede Minute bei DexScreener abfragen und nach Volumen/Kaeufen der letzten 5 min sortieren. Die heissesten Coins
+        mit echter Liquiditaet prueft der Analyst sofort; Coins noch auf der Bonding-Kurve bleiben auf der Beobachtungsliste,
+        bis sie an die Boerse wechseln."""
+        c = self.cfg.get("pumpfun_hot", {})
+        if self.chain != "solana" or not c.get("enabled"):
+            return
+        last_log = 0
+        while not self.stop_event.wait(c.get("interval_s", 60)):
+            try:
+                t = now()
+                with self.lock:
+                    mints = [m for m, ts in self.first_seen.items()
+                             if t - ts <= c.get("track_hours", 6) * 3600 and m not in self.pf_dead
+                             and str(self.source.get(m, "")).startswith(("PP", "PF"))]
+                mints = mints[-c.get("max_tokens", 1200):]
+                pairs = self.fetch_pairs(mints) if mints else {}
+                rows = []
+                for m, p in pairs.items():
+                    h1 = (p.get("txns") or {}).get("h1") or {}
+                    if fnum(h1.get("buys")) + fnum(h1.get("sells")) < 5 and t - self.first_seen.get(m, t) > 1800:
+                        self.pf_dead.add(m)  # seit einer Stunde kaum Handel -> nicht weiter verfolgen
+                        continue
+                    tx = (p.get("txns") or {}).get("m5") or {}
+                    buys, vol5 = fnum(tx.get("buys")), fnum((p.get("volume") or {}).get("m5"))
+                    if buys >= c.get("min_buys_m5", 15) and vol5 >= c.get("min_volume_m5_usd", 3000):
+                        liq = fnum((p.get("liquidity") or {}).get("usd"))
+                        rows.append((vol5, m, p["baseToken"].get("symbol", "?"), buys, fnum(p.get("marketCap") or p.get("fdv")), liq))
+                for m in mints:
+                    if m not in pairs and t - self.first_seen.get(m, t) > 1800:
+                        self.pf_dead.add(m)  # DexScreener kennt ihn nach 30 min noch nicht -> tot
+                rows.sort(reverse=True)
+                top = rows[:c.get("top_n", 15)]
+                min_liq = self.cfg["analyst"]["min_liquidity_usd"]
+                with self.lock:
+                    self.pf_hot = [m for v, m, sym, b, mc, liq in top if liq >= min_liq and m not in self.positions]
+                    self.pf_hot_view = [[sym, m, round(v), int(b), round(mc), liq >= min_liq] for v, m, sym, b, mc, liq in top[:10]]
+                    for v, m, *_ in top:  # heisse Coins laenger beobachten (auch wenn sie noch auf der Bonding-Kurve sind)
+                        self.watch[m] = max(self.watch.get(m, 0), t + c.get("track_hours", 6) * 3600)
+                    self.stats["pf_hot"] = len(top)
+                if top and t - last_log >= 300:
+                    last_log = t
+                    self.log("scout", "Pump.fun heiss: " + ", ".join(f"${sym} ${v / 1e3:.0f}k/5min" for v, m, sym, *_ in top[:6])
+                             + f" ({len(mints)} Coins verfolgt)")
+            except Exception as e:
+                self.log("scout", f"Pump.fun-Heiss-Liste: {e}", "warn")
+
     # ---------- Agent 6: FOMO ----------
     def fomo_counts(self):
         """mint -> (verschiedene Kaeufer, verschiedene Verkaeufer) im Zeitfenster."""
@@ -1418,7 +1482,7 @@ class Bot:
 
     def fomo_loop(self):
         c = self.cfg.get("fomo", {})
-        if not c.get("enabled"):
+        if not c.get("enabled") or self.chain != "solana":  # FOMO handelt auf Solana
             return
         self.log("fomo", "beobachtet FOMO-Trades on-chain")
         last_report = 0
@@ -1454,7 +1518,7 @@ class Bot:
             self.stop_event.wait(self.cfg["risk_interval_s"])
 
     def start(self):
-        for fn in (self.scout_loop, self.risk_loop, self.fomo_loop, self.stream_loop, self.chart_watch_loop):
+        for fn in (self.scout_loop, self.risk_loop, self.fomo_loop, self.stream_loop, self.chart_watch_loop, self.hot_loop):
             threading.Thread(target=fn, daemon=True).start()
         if os.environ.get("GITHUB_REPOSITORY") and os.environ.get("GITHUB_TOKEN") and self is self.family[0]:
             threading.Thread(target=self.github_reports_loop, daemon=True).start()
@@ -1587,7 +1651,7 @@ class Bot:
                     "wallets": len(self.fomo_stats["wallets"]),
                     "hot": [{"mint": m, "symbol": self.symbols.get(m), "buyers": b, "sellers": sl} for m, b, sl in self.fomo_hot(8)],
                 },
-                "equity_history": hist, "equity_ranges": ranges,
+                "equity_history": hist, "equity_ranges": ranges, "pf_hot": self.pf_hot_view,
                 "config": self.cfg,
             }
 

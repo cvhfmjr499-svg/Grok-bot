@@ -133,7 +133,7 @@
     }
   },
   "fomo": {
-    "enabled": false,
+    "enabled": true,
     "min_wallets": 3,
     "window_minutes": 10,
     "poll_interval_s": 15,
@@ -152,5 +152,14 @@
   },
   "dev_blacklist": {
     "rug_loss_pct": 40
+  },
+  "pumpfun_hot": {
+    "enabled": true,
+    "interval_s": 60,
+    "track_hours": 6,
+    "max_tokens": 1200,
+    "min_buys_m5": 15,
+    "min_volume_m5_usd": 3000,
+    "top_n": 15
   }
 }
