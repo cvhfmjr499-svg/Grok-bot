@@ -278,11 +278,6 @@ def chart_stats(candles):
             "hours": round((c[-1][0] - t0) / 3600, 1), "candles": len(c)}
 
 
-def clean_symbol(sym):
-    """Unsichtbare Steuerzeichen entfernen (z. B. Rechts-nach-links-Zeichen, mit denen Betrueger Namen tarnen)."""
-    return re.sub(r"[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]", "", str(sym or "?")) or "?"
-
-
 def fnum(x, default=0.0):
     try:
         return float(x)
@@ -340,7 +335,6 @@ class Bot:
         self.pf_dead = set()        # Pump.fun-Coins ohne Handel -> nicht mehr abfragen
         self.jup_price_next, self.jup_prices, self.jup_prices_at = 0, {}, 0
         self.ww_last_sig, self.ww_trades = {}, []  # beobachtete Trader-Wallets
-        self.kill_log, self.desk_scores = [], []  # Memecoin Desk: jeder Kill + letzte Analyst-Scores
         self.symbols = {}           # mint -> Symbol (fuers Dashboard)
         self.source = {}          # token -> Quelle, ueber die der Scout ihn gefunden hat
         self.cooldown = {}        # token -> nicht vor ts erneut kaufen
@@ -379,8 +373,6 @@ class Bot:
             self.equity_history = s.get("equity_history", [])[-2000:]
             self.equity_long = s.get("equity_long") or downsample(self.equity_history, 200)
             self.ww_trades = s.get("wallet_trades") or []
-            self.kill_log = s.get("kill_log") or []
-            self.desk_scores = s.get("desk_scores") or []
             self.ww_last_sig = s.get("wallet_last_sig") or {}
             for m, ts in (s.get("pf_track") or {}).items():  # Pump.fun-Coins der letzten Stunden weiter verfolgen
                 self.first_seen.setdefault(m, ts)
@@ -399,7 +391,6 @@ class Bot:
                 "cash": self.cash, "positions": self.positions, "closed": self.closed[-1000:],
                 "equity_history": self.equity_history[-2000:], "equity_long": self.equity_long, "cooldown": self.cooldown,
                 "wallet_trades": self.ww_trades[-200:], "wallet_last_sig": self.ww_last_sig,
-                "kill_log": self.kill_log[-2000:], "desk_scores": self.desk_scores[-200:],
                 "pf_track": {m: ts for m, ts in self.first_seen.items() if now() - ts <= 6 * 3600 and m not in self.pf_dead
                              and str(self.source.get(m, "")).startswith(("PP", "PF"))},
                 "token_losses": self.token_losses,
@@ -625,13 +616,7 @@ class Bot:
                                    "holders": fnum(tok.get("holderCount")), "holder_change_24h": fnum(s24.get("holderChange")),
                                    "liq_change_24h": fnum(s24.get("liquidityChange")), "price_change_24h": fnum(s24.get("priceChange")),
                                    "net_buyers_1h": fnum(s1.get("numNetBuyers")), "created": created,
-                                   "safe_auth": bool(a.get("mintAuthorityDisabled") and a.get("freezeAuthorityDisabled")),
-                                   # fuer den Memecoin Desk
-                                   "mint_off": a.get("mintAuthorityDisabled"), "freeze_off": a.get("freezeAuthorityDisabled"),
-                                   "dev_pct": fnum(a.get("devBalancePercentage"), None), "dev_mints": fnum(a.get("devMints"), None),
-                                   "dev_migrations": fnum(a.get("devMigrations"), None),
-                                   "traders_1h": fnum(s1.get("numTraders")), "organic_buyers_1h": fnum(s1.get("numOrganicBuyers")),
-                                   "holder_change_1h": fnum(s1.get("holderChange")), "dev": tok.get("dev")}
+                                   "safe_auth": bool(a.get("mintAuthorityDisabled") and a.get("freezeAuthorityDisabled"))}
 
     def fetch_organic(self, tokens):
         """Organic Score (echter vs. Bot-Handel) von Jupiter, bis zu 100 Coins pro Abfrage, 10 min Cache."""
@@ -870,132 +855,7 @@ class Bot:
             self._last_exit_n = len(self.closed)
         return self._last_exit
 
-    # ================= Memecoin Desk (Scout -> Filter -> Analyst -> Executor -> Risk -> Logger) =================
-    def desk_kill(self, pair, stage, reason, extra=None):
-        """Logger: jeder Kill wird mit Stufe und Grund festgehalten."""
-        rec = {"ts": now(), "symbol": clean_symbol(pair["baseToken"].get("symbol", "?")), "mint": pair["baseToken"]["address"],
-               "stage": stage, "reason": reason}
-        if extra:
-            rec.update(extra)
-        with self.lock:
-            self.kill_log.append(rec)
-            del self.kill_log[:-2000]
-            self.stats["desk_" + stage.lower()] = self.stats.get("desk_" + stage.lower(), 0) + 1
-            self.stats["desk_logged"] = self.stats.get("desk_logged", 0) + 1
-
-    def analyze_desk(self, pair):
-        d = self.cfg["desk"]
-        token = pair["baseToken"]["address"]
-        liq = fnum((pair.get("liquidity") or {}).get("usd"))
-        mcap = fnum(pair.get("marketCap") or pair.get("fdv"))
-        vol_h1 = fnum((pair.get("volume") or {}).get("h1"))
-        tx1 = (pair.get("txns") or {}).get("h1") or {}
-        buys, sells = fnum(tx1.get("buys")), fnum(tx1.get("sells"))
-        ch = pair.get("priceChange") or {}
-        ch_m5, ch_h1 = fnum(ch.get("m5")), fnum(ch.get("h1"))
-        created = fnum(pair.get("pairCreatedAt")) / 1000
-        age_min = (now() - created) / 60 if created else 0
-        info = {"liq": liq, "mcap": mcap, "age_min": age_min, "ch_h1": ch_h1, "buys_h1": buys, "sells_h1": sells}
-        sym = (pair["baseToken"].get("symbol") or "").upper()
-
-        # --- Scout: nur Paare 30 min - 72 h alt, MCap 300k - 20 Mio. $ (kein Kill, nur ausserhalb des Suchbereichs)
-        if sym in QUOTE_SYMBOLS or fnum(pair.get("priceUsd")) <= 0:
-            return False, "kein Memecoin", dict(info, recheck_min=1440)
-        if age_min < d["min_age_minutes"]:
-            return False, f"Scout: zu jung ({age_min:.0f} min)", dict(info, recheck_min=max(d["min_age_minutes"] - age_min, 1), young=True)
-        if age_min > d["max_age_hours"] * 60:
-            return False, "Scout: aelter als 72 h", dict(info, recheck_min=10080)
-        if not (d["min_mcap_usd"] <= mcap <= d["max_mcap_usd"]):
-            return False, f"Scout: MCap ${mcap:,.0f} ausserhalb", dict(info, recheck_min=15)
-        with self.lock:
-            self.stats["desk_scout"] = self.stats.get("desk_scout", 0) + 1
-
-        # --- Filter: harte Kills
-        def kill(reason, recheck=60):
-            self.desk_kill(pair, "Filter", reason)
-            return False, "Filter: " + reason, dict(info, recheck_min=recheck)
-        if liq < d["min_liquidity_usd"]:
-            return kill(f"Liquiditaet ${liq:,.0f} < ${d['min_liquidity_usd']:,.0f}", 15)
-        if vol_h1 < d["min_volume_h1_usd"]:
-            return kill(f"Volumen 1h ${vol_h1:,.0f} < ${d['min_volume_h1_usd']:,.0f}", 15)
-        if ch_h1 >= d["max_change_h1_pct"]:
-            return kill(f"schon +{ch_h1:.0f}% in 1h", 30)
-        if self.chain == "solana" and token not in self.organic:
-            self.fetch_organic([token])
-        j = self.organic.get(token) or {}
-        rc = self.rugcheck(token) if self.chain == "solana" else None
-        if rc is None:
-            return False, "RugCheck nicht verfuegbar", dict(info, recheck_min=5)
-        if rc.get("rugged"):
-            return kill("RugCheck: gerugt", 10080)
-        if rc.get("mintAuthority") or j.get("mint_off") is False:
-            return kill("Mint nicht gesperrt", 1440)
-        if rc.get("freezeAuthority") or j.get("freeze_off") is False:
-            return kill("Freeze nicht gesperrt", 1440)
-        lps = [m.get("lp") or {} for m in rc.get("markets") or []]
-        total = sum(fnum(x.get("baseUSD")) + fnum(x.get("quoteUSD")) for x in lps)
-        lp = fnum(rc.get("lpLockedPct")) if rc.get("lpLockedPct") is not None else (100 * sum(fnum(x.get("lpLockedUSD")) for x in lps) / total if total else 0)
-        info["lp_locked"] = lp
-        if lp < d["min_lp_locked_pct"]:
-            return kill(f"LP nicht verbrannt/gesperrt ({lp:.0f}%)", 360)
-        top10 = j.get("top_holders")
-        if top10 is None:  # RugCheck: Top-10 ohne Pool-Konten
-            pools = {m.get("pubkey") for m in rc.get("markets") or []} | {(m.get("lp") or {}).get("lpMint") for m in rc.get("markets") or []}
-            top10 = sum(fnum(h.get("pct")) for h in (rc.get("topHolders") or []) if h.get("owner") not in pools)
-            top10 = min(top10, 100)
-        info["top10_pct"] = top10
-        if top10 > d["max_top10_pct"]:
-            return kill(f"Top-10 halten {top10:.0f}% (> {d['max_top10_pct']}%)", 120)
-        supply = fnum((rc.get("token") or {}).get("supply"))
-        dev_pct = j.get("dev_pct")
-        if dev_pct is None and supply:
-            dev_pct = 100 * fnum(rc.get("creatorBalance")) / supply
-        info["dev_pct"] = dev_pct
-        if dev_pct is not None and dev_pct > d["max_dev_pct"]:
-            return kill(f"Dev haelt {dev_pct:.1f}% (> {d['max_dev_pct']}%)", 360)
-        dev = rc.get("creator") or j.get("dev")
-        if dev:
-            self.creators[token] = dev
-        if dev and dev in self.blacklist:
-            return kill(f"Dev hat schon gerugt (${self.blacklist[dev].get('symbol', '?')})", 10080)
-        mints, migr = j.get("dev_mints"), j.get("dev_migrations")
-        if mints and mints >= d["serial_dev_min_mints"] and (migr or 0) / mints < d["serial_dev_max_success"]:
-            return kill(f"Serien-Dev: {mints:.0f} Coins gestartet, nur {migr or 0:.0f} geschafft", 10080)
-        bundle = 100 * sum(fnum(n.get("currentHolding")) for n in rc.get("insiderNetworks") or []) / supply if supply else 0
-        info["bundle_pct"] = bundle
-        if bundle > d["max_bundle_pct"]:
-            return kill(f"Bundle/Insider halten {bundle:.0f}% (> {d['max_bundle_pct']}%)", 360)
-
-        # --- Analyst: Punkte 0-100, nur ab 70
-        clamp = lambda x: max(0.0, min(1.0, x))
-        fb = (self.fomo_counts().get(token) or (0, 0))[0]
-        watched = any(t.get("mint") == token and t.get("side") == "Kauf" and now() - t.get("ts", 0) < 7200 for t in self.ww_trades)
-        parts = {
-            "momentum": clamp(ch_h1 / 40) * 70 + (30 if ch_m5 > 0 else 15 if ch_m5 > -3 else 0),
-            "unique_buyers": clamp(j.get("traders_1h", 0) / 500) * 100,
-            "buy_sell": clamp((buys / max(sells, 1) - 1.0) / 1.0) * 100,
-            "holder_growth": clamp(j.get("holder_change_1h", 0) / 10) * 100,
-            "liq_mcap": clamp((liq / mcap - 0.03) / 0.12) * 100 if mcap else 0,
-            "smart_wallets": 100 if watched else max(clamp(fb / 3) * 100, clamp(j.get("organic_buyers_1h", 0) / 30) * 100),
-        }
-        w = d["weights"]
-        score = sum(parts[k] * w[k] for k in parts) / sum(w.values())
-        info["score"], info["score_parts"] = round(score), {k: round(v) for k, v in parts.items()}
-        with self.lock:
-            self.stats["desk_scored"] = self.stats.get("desk_scored", 0) + 1
-            self.desk_scores.append({"ts": now(), "symbol": clean_symbol(pair["baseToken"].get("symbol")), "mint": token, "score": round(score),
-                                     "parts": info["score_parts"]})
-            del self.desk_scores[:-200]
-        if score < d["min_score"]:
-            self.desk_kill(pair, "Analyst", f"Score {score:.0f} < {d['min_score']}", {"score": round(score), "parts": info["score_parts"]})
-            return False, f"Analyst: Score {score:.0f}/100 (< {d['min_score']})", dict(info, recheck_min=10)
-        with self.lock:
-            self.stats["desk_passed"] = self.stats.get("desk_passed", 0) + 1
-        return True, f"Score {score:.0f}/100", info
-
     def analyze(self, pair):
-        if self.cfg.get("desk", {}).get("enabled"):
-            return self.analyze_desk(pair)
         c = self.cfg["analyst"]
         liq = fnum((pair.get("liquidity") or {}).get("usd"))
         mcap = fnum(pair.get("marketCap") or pair.get("fdv"))
@@ -1627,7 +1487,7 @@ class Bot:
                     if self.stop_event.is_set():
                         break
                     ok, reason, info = self.analyze(pair)
-                    sym = clean_symbol(pair["baseToken"].get("symbol", "?"))
+                    sym = pair["baseToken"].get("symbol", "?")
                     self.symbols[token] = sym
                     fb = self.fomo_counts().get(token)
                     if fb:
@@ -1647,8 +1507,7 @@ class Bot:
                             key = kill_label(reason)
                             self.stats["kills"][key] = self.stats["kills"].get(key, 0) + 1
                     if ok:
-                        self.log("analyst", f"${sym} freigegeben - " + (f"Score {info['score']}/100, " if "score" in info else "")
-                                 + f"Liq ${info['liq']:,.0f}, {info['ch_h1']:+.0f}% 1h", "pass")
+                        self.log("analyst", f"${sym} freigegeben - Liq ${info['liq']:,.0f}, {info['ch_h1']:+.0f}% 1h", "pass")
                         self.buy(pair, info)
                     else:
                         self.log("analyst", f"${sym} abgelehnt: {reason}", "reject")
@@ -2100,8 +1959,6 @@ class Bot:
                     "hot": [{"mint": m, "symbol": self.symbols.get(m), "buyers": b, "sellers": sl} for m, b, sl in self.fomo_hot(8)],
                 },
                 "equity_history": hist, "equity_ranges": ranges, "pf_hot": self.pf_hot_view,
-                "desk": {"enabled": bool(self.cfg.get("desk", {}).get("enabled")), "kills": self.kill_log[-60:][::-1],
-                         "scores": self.desk_scores[-25:][::-1], "min_score": self.cfg.get("desk", {}).get("min_score")},
                 "wallets": {"watch": (self.cfg.get("watch_wallets") or {}).get("wallets", {}) if self.chain == "solana" else {},
                             "until": (self.cfg.get("watch_wallets") or {}).get("until"),
                             "trades": [dict(t, symbol=t.get("symbol") or self.symbols.get(t["mint"])) for t in self.ww_trades[-30:]][::-1]},
