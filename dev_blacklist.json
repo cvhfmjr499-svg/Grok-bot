@@ -46,5 +46,14 @@
   "ts": 1793255304.6243303,
   "reason": "Soft-Rug-Alarm: Absturz -52% in 2 min (Rug-Kerze) (Rug-Gefahr)",
   "pnl_pct": -53.1
+ },
+ "7ma9erE18bCtfZUvaGcQaU3PiYbpVTc7n1kQLVMq2BFG": {
+  "symbol": "Elon",
+  "name": "Elon Coin",
+  "token": "BYPJJj8LxHYWbwDPPuukHc4FiXq2b4bGEqQR7tcJf4u8",
+  "chain": "solana",
+  "ts": 1793259740.3108287,
+  "reason": "Stop-Loss -75.7%",
+  "pnl_pct": -76.1
  }
 }
