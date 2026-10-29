@@ -66,6 +66,8 @@ LAUNCHPADS_BY_CHAIN = {
 
 # FOMO-App: alle Trades werden von dieser FOMO-Wallet mitsigniert (laut Bitquery, on-chain geprueft).
 # Die Nutzer-Wallet ist der zweite Signer der Transaktion.
+WSOL = "So11111111111111111111111111111111111111112"
+USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 FOMO_SIGNER = "AgmLJBMDCqWynYnQiPCuj9ewsNNsBJXyzoUhD9LJzN51"
 
 
@@ -332,6 +334,7 @@ class Bot:
         self.pf_checked = {}
         self.pf_dead = set()        # Pump.fun-Coins ohne Handel -> nicht mehr abfragen
         self.jup_price_next, self.jup_prices, self.jup_prices_at = 0, {}, 0
+        self.ww_last_sig, self.ww_trades = {}, []  # beobachtete Trader-Wallets
         self.symbols = {}           # mint -> Symbol (fuers Dashboard)
         self.source = {}          # token -> Quelle, ueber die der Scout ihn gefunden hat
         self.cooldown = {}        # token -> nicht vor ts erneut kaufen
@@ -369,6 +372,8 @@ class Bot:
             self.closed = s["closed"]
             self.equity_history = s.get("equity_history", [])[-2000:]
             self.equity_long = s.get("equity_long") or downsample(self.equity_history, 200)
+            self.ww_trades = s.get("wallet_trades") or []
+            self.ww_last_sig = s.get("wallet_last_sig") or {}
             for m, ts in (s.get("pf_track") or {}).items():  # Pump.fun-Coins der letzten Stunden weiter verfolgen
                 self.first_seen.setdefault(m, ts)
                 self.source.setdefault(m, "PP-Neu")
@@ -385,6 +390,7 @@ class Bot:
             s = {
                 "cash": self.cash, "positions": self.positions, "closed": self.closed[-1000:],
                 "equity_history": self.equity_history[-2000:], "equity_long": self.equity_long, "cooldown": self.cooldown,
+                "wallet_trades": self.ww_trades[-200:], "wallet_last_sig": self.ww_last_sig,
                 "pf_track": {m: ts for m, ts in self.first_seen.items() if now() - ts <= 6 * 3600 and m not in self.pf_dead
                              and str(self.source.get(m, "")).startswith(("PP", "PF"))},
                 "token_losses": self.token_losses,
@@ -1523,6 +1529,90 @@ class Bot:
             self.stop_event.wait(backoff)
             backoff = min(backoff * 2, 120)
 
+    def wallet_watch_loop(self):
+        """Wallets bestimmter Trader beobachten (z. B. Numerooo0 laut Kolscan) bis zu einem Enddatum.
+        Jeder Kauf/Verkauf wird mitgeschrieben; gekaufte Coins prueft der Analyst sofort (gekauft wird nur, wenn alle
+        Regeln passen)."""
+        c = self.cfg.get("watch_wallets", {})
+        if self.chain != "solana" or not c.get("enabled") or not c.get("wallets"):
+            return
+        url = c.get("rpc_url", self.cfg.get("fomo", {}).get("rpc_url", "https://api.mainnet-beta.solana.com"))
+        try:
+            until = datetime.fromisoformat(c.get("until", "2100-01-01T00:00:00Z").replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            until = now() + 86400
+        self.log("scout", f"beobachte {len(c['wallets'])} Trader-Wallets bis {time.strftime('%d.%m. %H:%M', time.localtime(until))}: "
+                          + ", ".join(c["wallets"]))
+        while not self.stop_event.is_set() and now() < until:
+            for who, wallet in c["wallets"].items():
+                if self.stop_event.is_set():
+                    break
+                try:
+                    opts = {"limit": 20}
+                    last = self.ww_last_sig.get(wallet)
+                    if last:
+                        opts["until"] = last
+                    sigs = rpc_call(url, "getSignaturesForAddress", [wallet, opts]).get("result") or []
+                    if not sigs:
+                        continue
+                    self.ww_last_sig[wallet] = sigs[0]["signature"]
+                    if not last:
+                        sigs = sigs[:5]  # beim Start nur die letzten Trades zeigen, nicht die ganze Historie
+                    for sg in reversed([x for x in sigs if not x.get("err")]):
+                        tx = (rpc_call(url, "getTransaction", [sg["signature"], {"encoding": "jsonParsed",
+                              "maxSupportedTransactionVersion": 1, "commitment": "confirmed"}]) or {}).get("result")
+                        if tx:
+                            self.wallet_trade(who, wallet, tx, fresh=bool(last))
+                        time.sleep(0.4)
+                except urllib.error.HTTPError as e:
+                    time.sleep(10 if e.code == 429 else 2)
+                except Exception as e:
+                    self.log("scout", f"Wallet {who}: {e}", "warn")
+            self.stop_event.wait(c.get("poll_s", 20))
+
+    def wallet_trade(self, who, wallet, tx, fresh=True):
+        meta = tx.get("meta") or {}
+        if meta.get("err"):
+            return
+        amt = lambda b: fnum((b.get("uiTokenAmount") or {}).get("uiAmount"))
+        pre = {b["mint"]: amt(b) for b in meta.get("preTokenBalances") or [] if b.get("owner") == wallet}
+        post = {b["mint"]: amt(b) for b in meta.get("postTokenBalances") or [] if b.get("owner") == wallet}
+        acc = ((tx.get("transaction") or {}).get("message") or {}).get("accountKeys", [])
+        keys = [k.get("pubkey") if isinstance(k, dict) else k for k in acc]
+        if wallet not in {k.get("pubkey") for k in acc if isinstance(k, dict) and k.get("signer")}:
+            return  # nicht selbst gehandelt (z. B. jemand schickt ihm Coins)
+        sol = 0.0
+        if wallet in keys:
+            i = keys.index(wallet)
+            sol = (fnum((meta.get("postBalances") or [0] * (i + 1))[i]) - fnum((meta.get("preBalances") or [0] * (i + 1))[i])) / 1e9
+        ts = tx.get("blockTime") or now()
+        # bezahlt/erhalten in SOL, WSOL oder USDC (sonst nur Transfer/Airdrop, z. B. Spam-Coins -> ignorieren)
+        quote = sol + sum((post.get(m, 0) - pre.get(m, 0)) * (1 if m == WSOL else 1 / 150) for m in (WSOL, USDC_MINT))
+        for mint in set(pre) | set(post):
+            if mint in IGNORE_TOKENS:
+                continue
+            d = post.get(mint, 0) - pre.get(mint, 0)
+            if not d:
+                continue
+            if d > 0 and quote < -0.001:
+                side = "Kauf"
+            elif d < 0 and quote > 0.001:
+                side = "Verkauf"
+            else:
+                continue
+            sol = quote
+            rec = {"ts": ts, "who": who, "wallet": wallet, "mint": mint, "side": side, "sol": round(abs(sol), 3),
+                   "symbol": self.symbols.get(mint)}
+            with self.lock:
+                self.ww_trades.append(rec)
+                del self.ww_trades[:-200]
+                if side == "Kauf" and fresh and mint not in self.positions:
+                    self.source[mint] = f"Wallet {who}"
+                    self.next_check[mint] = 0
+                    self.watch[mint] = max(self.watch.get(mint, 0), now() + 7200)
+            if fresh:
+                self.log("scout", f"WALLET {who}: {side} ${rec['symbol'] or mint[:6] + '…'} ({abs(sol):.2f} SOL)", "buy" if side == "Kauf" else "info")
+
     def after_exit_loop(self):
         """Lern-Log: verkaufte Coins noch 6 h weiter verfolgen (alle 5 min). So sieht man, ob ein Verkauf zu frueh war
         (Coin ist danach weit gestiegen) oder richtig (Coin ist danach weiter gefallen)."""
@@ -1700,7 +1790,8 @@ class Bot:
             self.stop_event.wait(self.cfg["risk_interval_s"])
 
     def start(self):
-        for fn in (self.scout_loop, self.risk_loop, self.fomo_loop, self.stream_loop, self.chart_watch_loop, self.hot_loop, self.after_exit_loop):
+        for fn in (self.scout_loop, self.risk_loop, self.fomo_loop, self.stream_loop, self.chart_watch_loop, self.hot_loop, self.after_exit_loop,
+                   self.wallet_watch_loop):
             threading.Thread(target=fn, daemon=True).start()
         if os.environ.get("GITHUB_REPOSITORY") and os.environ.get("GITHUB_TOKEN") and self is self.family[0]:
             threading.Thread(target=self.github_reports_loop, daemon=True).start()
@@ -1834,6 +1925,9 @@ class Bot:
                     "hot": [{"mint": m, "symbol": self.symbols.get(m), "buyers": b, "sellers": sl} for m, b, sl in self.fomo_hot(8)],
                 },
                 "equity_history": hist, "equity_ranges": ranges, "pf_hot": self.pf_hot_view,
+                "wallets": {"watch": (self.cfg.get("watch_wallets") or {}).get("wallets", {}) if self.chain == "solana" else {},
+                            "until": (self.cfg.get("watch_wallets") or {}).get("until"),
+                            "trades": [dict(t, symbol=t.get("symbol") or self.symbols.get(t["mint"])) for t in self.ww_trades[-30:]][::-1]},
                 "config": self.cfg,
             }
 

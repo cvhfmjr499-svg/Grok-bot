@@ -194,5 +194,14 @@
     "min_buys_m5": 15,
     "min_volume_m5_usd": 3000,
     "top_n": 15
+  },
+  "watch_wallets": {
+    "enabled": true,
+    "until": "2026-10-30T11:00:00Z",
+    "poll_s": 20,
+    "wallets": {
+      "Numerooo0": "A3W8psibkTUvjxs4LRscbnjux6TFDXdvD4m4GsGpQ2KJ"
+    },
+    "note": "Wallet laut Kolscan-Bestenliste (x.com/Numerooo0). Weitere Wallets hier eintragen: \"Name\": \"Adresse\"."
   }
 }
