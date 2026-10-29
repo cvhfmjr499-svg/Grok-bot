@@ -1,9 +1,9 @@
 {
   "chain": "solana",
-  "start_kapital_eur": 1000,
+  "start_kapital_eur": 100,
   "anzeige_waehrung": "EUR",
   "usd_pro_eur": 1.115,
-  "start_balance_usd": 1113.3,
+  "start_balance_usd": 111.5,
   "goal_multiple": 2.0,
   "scout_interval_s": 20,
   "risk_interval_s": 1,
@@ -163,7 +163,7 @@
     }
   },
   "fomo": {
-    "enabled": true,
+    "enabled": false,
     "min_wallets": 3,
     "window_minutes": 10,
     "poll_interval_s": 15,
