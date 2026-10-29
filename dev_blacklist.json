@@ -37,5 +37,14 @@
   "chain": "solana",
   "ts": 1793240982.413932,
   "reason": "von dir (Handy) als Rug gemeldet"
+ },
+ "FXBqsiSL17J7WwHvtQGSELCxU8MfBAwkZ7QYZSZohobx": {
+  "symbol": "STEVE",
+  "name": "Steve",
+  "token": "FMzQfjhqGnMTB56Z6ie9Muz2BzSKbGUwB2wwS4Dqex4C",
+  "chain": "solana",
+  "ts": 1793255304.6243303,
+  "reason": "Soft-Rug-Alarm: Absturz -52% in 2 min (Rug-Kerze) (Rug-Gefahr)",
+  "pnl_pct": -53.1
  }
 }
