@@ -55,5 +55,14 @@
   "ts": 1793259740.3108287,
   "reason": "Stop-Loss -75.7%",
   "pnl_pct": -76.1
+ },
+ "L25Xe1Z7cqPpSDAPQevJCGp8f7HJttai7459bQLHX58": {
+  "symbol": "VOUCH",
+  "name": "Vouchmarket",
+  "token": "GXQVzSaNGQiSy7Kxpvox3HE4bJujFa666E2wvbrrpump",
+  "chain": "solana",
+  "ts": 1793303039.3980634,
+  "reason": "Soft-Rug-Alarm: Fake-Handel ($5.0 pro Trade bei 307 Trades/1h) (Rug-Gefahr)",
+  "pnl_pct": -5.0
  }
 }
