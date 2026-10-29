@@ -844,6 +844,17 @@ class Bot:
                 return b.get("symbol")
         return None
 
+    @property
+    def last_exit(self):
+        """Token -> Zeit des letzten kompletten Verkaufs."""
+        if getattr(self, "_last_exit_n", -1) != len(self.closed):
+            self._last_exit = {}
+            for t in self.closed:
+                if not t.get("partial"):
+                    self._last_exit[t["token"]] = max(self._last_exit.get(t["token"], 0), t.get("closed_at", 0))
+            self._last_exit_n = len(self.closed)
+        return self._last_exit
+
     def analyze(self, pair):
         c = self.cfg["analyst"]
         liq = fnum((pair.get("liquidity") or {}).get("usd"))
@@ -882,6 +893,9 @@ class Bot:
         checks = [
             ((pair["baseToken"].get("symbol") or "").upper() not in QUOTE_SYMBOLS, "Basis-Token (kein Memecoin)", 10080),
             (self.token_losses.get(token, 0) < c.get("max_losses_per_token", 99), "zu viele Verluste mit diesem Coin", 10080),
+            # nicht denselben Coin kurz nach dem Verkauf wieder kaufen (nach einem grossen Lauf = Kauf am Top)
+            (not c.get("rebuy_block_hours") or now() - self.last_exit.get(token, 0) >= c["rebuy_block_hours"] * 3600,
+             f"vor kurzem schon gehandelt (Wiederkauf erst nach {c.get('rebuy_block_hours')} h)", 60),
             (price > 0, "kein Preis", 10),
             (liq >= c["min_liquidity_usd"], f"Liquiditaet ${liq:,.0f} zu gering", 15),
             (liq <= c["max_liquidity_usd"], "zu gross/kein Memecoin", 1440),
@@ -891,7 +905,7 @@ class Bot:
             (vol_h24 >= c.get("min_volume_h24_usd", 0), f"Volumen 24h unter ${c.get('min_volume_h24_usd', 0):,.0f}", 15),
             (c["min_mcap_usd"] <= mcap <= c["max_mcap_usd"], f"MCap ${mcap:,.0f} ausserhalb", 15),
             (buys >= c["min_buys_h1"], f"nur {buys:.0f} Kaeufe/1h", 10),
-            (sells == 0 or buys / sells >= c["min_buy_sell_ratio_h1"], "mehr Verkaeufer als Kaeufer", 10),
+            (sells == 0 or buys / sells >= c["min_buy_sell_ratio_h1"], f"zu wenig Kaeufer ({buys / max(sells, 1):.1f} Kaeufer pro Verkaeufer)", 10),
             (not c.get("max_sell_buy_ratio_h1") or sells <= c["max_sell_buy_ratio_h1"] * max(buys, 1),
              f"starker Verkaufsdruck ({sells:.0f} Verkaeufe vs. {buys:.0f} Kaeufe/1h)", 15),
             (not c.get("max_sell_buy_ratio_h6") or sells6 <= c["max_sell_buy_ratio_h6"] * max(buys6, 1),
