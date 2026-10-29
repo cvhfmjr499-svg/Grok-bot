@@ -64,5 +64,14 @@
   "ts": 1793303039.3980634,
   "reason": "Soft-Rug-Alarm: Fake-Handel ($5.0 pro Trade bei 307 Trades/1h) (Rug-Gefahr)",
   "pnl_pct": -5.0
+ },
+ "GxB53PUT8mDQcYG6QQmM3NKDa6n32a7U6ooZQMkaNQPX": {
+  "symbol": "VAGINA",
+  "name": "Ozempic vagina",
+  "token": "6qLNbPgsbndPtH9R9pqWpxxwJUmKTyHFzHt752R8pump",
+  "chain": "solana",
+  "ts": 1793307001.7526224,
+  "reason": "Stop-Loss -40.8% (Schonfrist)",
+  "pnl_pct": -41.8
  }
 }
