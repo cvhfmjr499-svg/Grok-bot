@@ -13,6 +13,7 @@ Es wird KEIN echtes Geld bewegt und keine Wallet benoetigt.
 Start:  python3 bot.py            -> Dashboard auf http://localhost:8080
 """
 import argparse
+from datetime import datetime
 import base64
 import json
 import os
@@ -44,7 +45,8 @@ QUOTE_SYMBOLS = {"WETH", "ETH", "WBNB", "BNB", "USDC", "USDT", "DAI", "USD1", "C
 JUP = "https://lite-api.jup.ag/tokens/v2"
 # Jupiter-Listen: (Pfad, Abfrage alle x Sekunden, Quellen-Name)
 JUP_LISTS = [("/toptrending/1h?limit=100", 120, "JUP-Trend"), ("/toporganicscore/1h?limit=100", 120, "JUP-Organic"),
-             ("/toptraded/1h?limit=100", 180, "JUP-Traded"), ("/recent?limit=100", 90, "JUP-Neu")]
+             ("/toptraded/1h?limit=100", 180, "JUP-Traded"), ("/recent?limit=100", 90, "JUP-Neu"),
+             ("/toptrending/24h?limit=100", 600, "JUP-Trend24h"), ("/toporganicscore/24h?limit=100", 600, "JUP-Organic24h")]
 # Solana-Launchpads, deren aktivste Pools der Scout reihum bei GeckoTerminal abfragt
 LAUNCHPADS_BY_CHAIN = {
     "solana": [
@@ -329,6 +331,7 @@ class Bot:
         self.pf_hot_view = []       # fuer die Seite: [symbol, mint, Volumen 5 min, Kaeufe 5 min, MCap, an der Boerse?]
         self.pf_checked = {}
         self.pf_dead = set()        # Pump.fun-Coins ohne Handel -> nicht mehr abfragen
+        self.jup_price_next, self.jup_prices, self.jup_prices_at = 0, {}, 0
         self.symbols = {}           # mint -> Symbol (fuers Dashboard)
         self.source = {}          # token -> Quelle, ueber die der Scout ihn gefunden hat
         self.cooldown = {}        # token -> nicht vor ts erneut kaufen
@@ -411,6 +414,28 @@ class Bot:
         sub.wallet, sub.lock, sub.stop_event = self.wallet, self.lock, self.stop_event
         self.family.append(sub)
         sub.family = self.family
+
+    def jupiter_prices(self, tokens):
+        """Aktuelle Preise von Jupiter (Solana), hoechstens alle 3 s, bei Rate-Limit 30 s Pause. -> {mint: usd}"""
+        c = self.cfg.get("jupiter", {})
+        if self.chain != "solana" or not c.get("enabled", True) or not c.get("live_prices", True) or not tokens:
+            return {}
+        if now() < self.jup_price_next:
+            return self.jup_prices if now() - self.jup_prices_at < 10 else {}
+        self.jup_price_next = now() + c.get("price_interval_s", 3)
+        out = {}
+        try:
+            for i in range(0, len(tokens), 50):
+                d = http_json("https://lite-api.jup.ag/price/v3?ids=" + ",".join(tokens[i:i + 50]), timeout=5) or {}
+                out.update({m: fnum(v.get("usdPrice")) for m, v in d.items() if isinstance(v, dict) and fnum(v.get("usdPrice")) > 0})
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                self.jup_price_next = now() + 30
+            return {}
+        except Exception:
+            return {}
+        self.jup_prices, self.jup_prices_at = out, now()
+        return out
 
     def fetch_pairs(self, tokens):
         """Beste Pair (hoechste Liquiditaet) je Token, in 30er-Paketen."""
@@ -573,9 +598,19 @@ class Bot:
         return new + again
 
     def remember_organic(self, tok):
+        a, s24, s1 = tok.get("audit") or {}, tok.get("stats24h") or {}, tok.get("stats1h") or {}
+        try:
+            created = datetime.fromisoformat(str(tok.get("createdAt")).replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            created = None
         self.organic[tok["id"]] = {"ts": now(), "score": fnum(tok.get("organicScore")),
                                    "label": tok.get("organicScoreLabel"),
-                                   "top_holders": fnum((tok.get("audit") or {}).get("topHoldersPercentage"), None)}
+                                   "top_holders": fnum(a.get("topHoldersPercentage"), None),
+                                   # fuer die Comeback-Suche (Coins wie $GTA6)
+                                   "holders": fnum(tok.get("holderCount")), "holder_change_24h": fnum(s24.get("holderChange")),
+                                   "liq_change_24h": fnum(s24.get("liquidityChange")), "price_change_24h": fnum(s24.get("priceChange")),
+                                   "net_buyers_1h": fnum(s1.get("numNetBuyers")), "created": created,
+                                   "safe_auth": bool(a.get("mintAuthorityDisabled") and a.get("freezeAuthorityDisabled"))}
 
     def fetch_organic(self, tokens):
         """Organic Score (echter vs. Bot-Handel) von Jupiter, bis zu 100 Coins pro Abfrage, 10 min Cache."""
@@ -736,6 +771,52 @@ class Bot:
             return False, f"toter Coin: {st['from_ath_pct']:.0f}% unter dem Hoch, Volumen nur {st['vol_vs_max_pct']:.1f}% vom Maximum", st
         return True, "Chart ok", st
 
+    def comeback_candidate(self, token, c):
+        """Coin wie $GTA6: aelter, grosse wachsende Community, echter Handel, sicherer Vertrag, steigt gerade stark.
+        Nur Zahlen von Jupiter, ohne Abfrage. Der Chart wird danach in comeback_chart geprueft."""
+        cb = c.get("comeback", {})
+        j = self.organic.get(token) or {}
+        if not cb.get("enabled") or not j.get("created"):
+            return False
+        age_d = (now() - j["created"]) / 86400
+        return (cb.get("min_age_days", 2) <= age_d <= cb.get("max_age_days", 365)
+                and j.get("holders", 0) >= cb.get("min_holders", 3000)
+                and j.get("holder_change_24h", 0) >= cb.get("min_holder_change_pct", 10)
+                and j.get("score", 0) >= cb.get("min_organic_score", 60)
+                and j.get("price_change_24h", 0) >= cb.get("min_price_change_24h_pct", 20)
+                and j.get("liq_change_24h", 0) > 0 and j.get("net_buyers_1h", 0) > 0 and j.get("safe_auth")
+                and (j.get("top_holders") if j.get("top_holders") is not None else 100) <= cb.get("max_top10_pct", 25))
+
+    def comeback_chart(self, pair, c):
+        """Tageschart: Ausbruch nahe am Allzeithoch, Volumen springt an, hoehere Tiefs. -> (ok, Grund, Werte)"""
+        cb = c.get("comeback", {})
+        pool = pair.get("pairAddress")
+        hit = self.chart_cache.get(("day", pool))
+        if hit and now() - hit[0] < 1800:
+            days = hit[1]
+        else:
+            try:
+                days = sorted(gecko_json(f"{self.gecko}/pools/{pool}/ohlcv/day?limit=120&currency=usd")["data"]["attributes"]["ohlcv_list"])
+            except Exception:
+                return None, "Tageschart nicht abrufbar", {}
+            self.chart_cache[("day", pool)] = (now(), days)
+        if len(days) < 5:
+            return False, "Comeback: zu wenig Tageskerzen", {}
+        ath = max(fnum(d[2]) for d in days)
+        price = fnum(pair.get("priceUsd")) or fnum(days[-1][4])
+        prev = sum(fnum(d[5]) for d in days[-4:-1]) / 3
+        jump = fnum((pair.get("volume") or {}).get("h24")) / prev if prev > 0 else 99
+        lows = [fnum(d[3]) for d in days[-6:]]
+        higher = sum(1 for x, y in zip(lows, lows[1:]) if y >= x * 0.97)
+        st = {"from_ath_pct": round((price / ath - 1) * 100, 1) if ath else 0, "volume_jump": round(jump, 1), "higher_lows": higher, "days": len(days)}
+        if st["from_ath_pct"] < -cb.get("max_below_ath_pct", 15):
+            return False, f"Comeback: noch {st['from_ath_pct']:.0f}% unter dem Hoch (kein Ausbruch)", st
+        if jump < cb.get("min_volume_jump", 1.5):
+            return False, f"Comeback: Volumen nur {jump:.1f}x der Vortage", st
+        if higher < cb.get("min_higher_lows", 3):
+            return False, f"Comeback: kein Aufwaertstrend (nur {higher}/5 hoehere Tiefs)", st
+        return True, "Comeback-Ausbruch", st
+
     @staticmethod
     def avg_trade_usd(pair):
         """Durchschnittliche Tradegroesse der letzten Stunde -> (Dollar pro Trade, Anzahl Trades)."""
@@ -790,6 +871,8 @@ class Bot:
         avg_hour = vol_h24 / min(24, max(age_min / 60, 1))
         vol_trend = max(vol_h1, vol_m5 * 12) / avg_hour if avg_hour > 0 else 1  # laeuft gerade wieder an -> zaehlt auch
         copycat = self.copycat_of(pair) if c.get("block_copycats", True) else None
+        comeback = self.comeback_candidate(token, c)
+        max_age_min = c.get("comeback", {}).get("max_age_days", 365) * 1440 if comeback else c["max_age_hours"] * 60
         checks = [
             ((pair["baseToken"].get("symbol") or "").upper() not in QUOTE_SYMBOLS, "Basis-Token (kein Memecoin)", 10080),
             (self.token_losses.get(token, 0) < c.get("max_losses_per_token", 99), "zu viele Verluste mit diesem Coin", 10080),
@@ -797,7 +880,7 @@ class Bot:
             (liq >= c["min_liquidity_usd"], f"Liquiditaet ${liq:,.0f} zu gering", 15),
             (liq <= c["max_liquidity_usd"], "zu gross/kein Memecoin", 1440),
             (age_min >= c["min_age_minutes"], f"zu jung ({age_min:.0f} min)", young_wait),
-            (age_min <= c["max_age_hours"] * 60, "zu alt", 10080),
+            (age_min <= max_age_min, "zu alt", 10080 if not c.get("comeback", {}).get("enabled") else 60),
             (vol_h1 >= c["min_volume_h1_usd"], f"Volumen 1h ${vol_h1:,.0f} zu gering", 10),
             (vol_h24 >= c.get("min_volume_h24_usd", 0), f"Volumen 24h unter ${c.get('min_volume_h24_usd', 0):,.0f}", 15),
             (c["min_mcap_usd"] <= mcap <= c["max_mcap_usd"], f"MCap ${mcap:,.0f} ausserhalb", 15),
@@ -880,8 +963,16 @@ class Bot:
                 return False, f"RugCheck: {dangers[0]}", dict(info, recheck_min=360)
             if score > c["max_rugcheck_score_normalised"]:
                 return False, f"RugCheck-Score {score:.0f} zu hoch", dict(info, recheck_min=360)
-            if lp < c["min_lp_locked_pct"]:
+            if lp < (c.get("comeback", {}).get("min_lp_locked_pct", 0) if comeback else c["min_lp_locked_pct"]):
                 return False, f"LP nur {lp:.0f}% gesperrt", dict(info, recheck_min=60)
+        if comeback:
+            ok, reason, st = self.comeback_chart(pair, c)
+            info["comeback"] = st
+            if ok is None:
+                return False, reason, dict(info, recheck_min=5)
+            if not ok:
+                return False, reason, dict(info, recheck_min=30)
+            self.source[token] = "Comeback"
         if c.get("chart_check", True):
             ok, reason, st = self.chart_check(pair, c)
             if st:
@@ -955,6 +1046,7 @@ class Bot:
             with self.lock:
                 pair_of = {t: self.positions[t].get("pair") for t in tokens if t in self.positions}
             by_pair = self.fetch_by_pair(pair_of.values())
+            jup = self.jupiter_prices(tokens)  # Solana: Jupiter-Preis ist ca. 4x aktueller als DexScreener
             missing = [t for t, pa in pair_of.items() if pa not in by_pair]
             fallback = self.fetch_pairs(missing) if missing else {}  # nur fuer alte Positionen ohne Pool-Adresse
             r = self.cfg["risk"]
@@ -990,7 +1082,10 @@ class Bot:
                     if not pos:
                         continue
                     if p:
-                        pos["last_price"] = fnum(p.get("priceUsd"), pos["last_price"])
+                        dex_price = fnum(p.get("priceUsd"), pos["last_price"])
+                        jp = jup.get(token)
+                        # Jupiter nur nutzen, wenn er zum Pool passt (gleicher Coin, kein Ausreisser > 30 %)
+                        pos["last_price"] = jp if jp and 0.7 < jp / max(dex_price, 1e-30) < 1.3 else dex_price
                         pos["last_liq"] = fnum((p.get("liquidity") or {}).get("usd"), pos["last_liq"])
                         dep = pool_depth(p)
                         if dep > 0:
@@ -1073,8 +1168,11 @@ class Bot:
                     if r.get("trailing_distance_after_tp_pct") and (pos.get("partial_level", 0) >= 1 or pos.get("partial_done")):
                         trail_dist = r["trailing_distance_after_tp_pct"]
                     run = r.get("runner", {})
-                    if run.get("enabled") and pos.get("partial_level", 0) >= run.get("after_tp_level", 2):
+                    is_runner = run.get("enabled") and pos.get("partial_level", 0) >= run.get("after_tp_level", 2)
+                    if is_runner:
                         trail_dist = run.get("trailing_pct", 30)  # Laeufer (z. B. $DUBBLE): mehr Luft lassen, laufen lassen
+                        if pos.get("runner_trims", 0) >= run.get("max_trims", 2):
+                            trail_dist = run.get("moonbag_trailing_pct", 50)  # letzter Rest (Moonbag) mit viel Luft
                     reason = None
                     dev = self.creators.get(token)
                     if dev and dev in self.blacklist:
@@ -1094,6 +1192,15 @@ class Bot:
                         reason = self.chart_exit.pop(token)
                     elif peak_pnl >= r["trailing_activate_pct"] and price <= peak * (1 - trail_dist / 100):
                         reason = f"Trailing-Stop (Hoch {peak_pnl:+.0f}%, jetzt {pnl:+.0f}%, Abstand {trail_dist:.0f}%)"
+                        if is_runner and pos.get("runner_trims", 0) < run.get("max_trims", 2):
+                            # Laeufer nicht komplett schliessen, nur weil der Chart gerade schwach aussieht: Teil verkaufen
+                            k = pos.get("runner_trims", 0) + 1
+                            part = run.get("trim_pct", 50) / 100
+                            pnl_part = self.sell_part(token, pos, part, f"Laeufer-Teilverkauf {k}: {part * 100:.0f}% bei {pnl:+.0f}% (Hoch {peak_pnl:+.0f}%)", f"Teil {k}")
+                            self.log("banker", f"LAEUFER ${pos['symbol']}: {part * 100:.0f}% verkauft bei {pnl:+.0f}% ({pnl_part:+,.2f} $), Rest laeuft weiter", "win")
+                            pos["runner_trims"] = k
+                            pos["peak_price"] = price  # Trailing ab hier neu messen
+                            reason = None
                     elif r.get("max_hold_minutes") and held_min >= r["max_hold_minutes"] and (pnl < 0 or not r.get("hold_only_if_losing")):
                         reason = f"Haltezeit {held_min:.0f} min abgelaufen"
                 if reason:
@@ -1230,7 +1337,14 @@ class Bot:
         gain = (pos["last_price"] / pos["entry_price"] - 1) * 100
         if not step or gain < step[0]:
             return
-        part = step[1] / 100
+        pos["partial_level"] = n + 1
+        pos["partial_done"] = True
+        pnl = self.sell_part(token, pos, step[1] / 100, f"Teilgewinn {n + 1}: {step[1]:.0f}% verkauft bei +{gain:.0f}%", f"TP {n + 1}")
+        self.log("banker", f"TEILGEWINN {n + 1} ${pos['symbol']}: {step[1]:.0f}% verkauft bei +{gain:.0f}% ({pnl:+,.2f} $), Rest laeuft weiter", "win")
+
+    def sell_part(self, token, pos, part, reason, label):
+        """Einen Teil der Position verkaufen (part = 0..1). Muss mit gehaltenem self.lock aufgerufen werden. -> Gewinn in $"""
+        s = self.cfg["sniper"]
         qty = pos["qty"] * part
         gross = qty * pos["last_price"]
         proceeds = gross * (1 - self.slippage_pct(gross, pos["last_liq"]) / 100)
@@ -1239,20 +1353,17 @@ class Bot:
         self.cash += proceeds
         pos["qty"] -= qty
         pos["cost_usd"] -= cost
-        pos["partial_level"] = n + 1
-        pos["partial_done"] = True
         pos["realized_usd"] = pos.get("realized_usd", 0) + proceeds - cost
-        pos.setdefault("events", []).append([now(), f"TP {n + 1}", pos["last_price"]])
+        pos.setdefault("events", []).append([now(), label, pos["last_price"]])
         pnl = proceeds - cost
         self.closed.append({
-            "symbol": pos["symbol"], "token": token, "url": pos.get("url"), "partial": True,
+            "symbol": pos["symbol"], "token": token, "url": pos.get("url"), "partial": True, "pair": pos.get("pair"),
             "opened_at": pos["opened_at"], "closed_at": now(), "cost_usd": cost, "proceeds_usd": proceeds,
-            "pnl_usd": pnl, "pnl_pct": pnl / cost * 100 if cost else 0,
-            "reason": f"Teilgewinn {n + 1}: {step[1]:.0f}% verkauft bei +{gain:.0f}%",
+            "pnl_usd": pnl, "pnl_pct": pnl / cost * 100 if cost else 0, "reason": reason,
             "source": pos.get("source", "?"), "entry_mcap": pos.get("entry_mcap"), "exit_mcap": pos.get("last_mcap"),
             "peak_pct": (pos["peak_price"] / pos["entry_price"] - 1) * 100, "held_min": (now() - pos["opened_at"]) / 60,
         })
-        self.log("banker", f"TEILGEWINN {n + 1} ${pos['symbol']}: {step[1]:.0f}% verkauft bei +{gain:.0f}% ({pnl:+,.2f} $), Rest laeuft weiter", "win")
+        return pnl
 
     # ---------- Agent 5: Banker ----------
     def sell(self, token, reason):
@@ -1278,7 +1389,7 @@ class Bot:
                 "pair": pos.get("pair"), "entry_liq": pos.get("entry_liq"), "exit_liq": pos.get("last_liq"),
                 "entry_mcap": pos.get("entry_mcap"), "exit_mcap": pos.get("last_mcap"), "adds": pos.get("adds", 0),
                 "peak_pct": (pos["peak_price"] / pos["entry_price"] - 1) * 100,
-                "held_min": (now() - pos["opened_at"]) / 60,
+                "held_min": (now() - pos["opened_at"]) / 60, "exit_price": pos["last_price"], "chain": self.chain,
             }
             self.closed.append(trade)
         kind = "win" if pnl >= 0 else "loss"
@@ -1411,6 +1522,30 @@ class Bot:
                     ws.close()
             self.stop_event.wait(backoff)
             backoff = min(backoff * 2, 120)
+
+    def after_exit_loop(self):
+        """Lern-Log: verkaufte Coins noch 6 h weiter verfolgen (alle 5 min). So sieht man, ob ein Verkauf zu frueh war
+        (Coin ist danach weit gestiegen) oder richtig (Coin ist danach weiter gefallen)."""
+        while not self.stop_event.wait(300):
+            try:
+                with self.lock:
+                    todo = [t for t in self.closed[-200:] if not t.get("partial") and t.get("pair") and t.get("exit_price")
+                            and now() - t["closed_at"] <= 6 * 3600]
+                if not todo:
+                    continue
+                pairs = self.fetch_by_pair({t["pair"] for t in todo})
+                with self.lock:
+                    for t in todo:
+                        p = pairs.get(t["pair"])
+                        price = fnum((p or {}).get("priceUsd"))
+                        if price <= 0:
+                            continue
+                        ch = (price / t["exit_price"] - 1) * 100
+                        a = t.setdefault("after", {"max_pct": ch, "min_pct": ch})
+                        a["max_pct"], a["min_pct"], a["now_pct"] = max(a["max_pct"], ch), min(a["min_pct"], ch), ch
+                        a["hours"] = round((now() - t["closed_at"]) / 3600, 1)
+            except Exception as e:
+                self.log("system", f"Lern-Log: {e}", "warn")
 
     def hot_loop(self):
         """Pump.fun "Heiss"/Top-Performer ohne API-Schluessel: alle neuen Pump.fun-Coins der letzten Stunden (Live-Stream)
@@ -1565,7 +1700,7 @@ class Bot:
             self.stop_event.wait(self.cfg["risk_interval_s"])
 
     def start(self):
-        for fn in (self.scout_loop, self.risk_loop, self.fomo_loop, self.stream_loop, self.chart_watch_loop, self.hot_loop):
+        for fn in (self.scout_loop, self.risk_loop, self.fomo_loop, self.stream_loop, self.chart_watch_loop, self.hot_loop, self.after_exit_loop):
             threading.Thread(target=fn, daemon=True).start()
         if os.environ.get("GITHUB_REPOSITORY") and os.environ.get("GITHUB_TOKEN") and self is self.family[0]:
             threading.Thread(target=self.github_reports_loop, daemon=True).start()

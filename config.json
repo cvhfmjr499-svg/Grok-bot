@@ -47,7 +47,21 @@
     "chart_optional_below_min": 180,
     "min_trades_m5": 5,
     "min_volume_trend": 0.3,
-    "dead_volume_any_pct": 2
+    "dead_volume_any_pct": 2,
+    "comeback": {
+      "enabled": true,
+      "min_age_days": 2,
+      "max_age_days": 365,
+      "min_holders": 3000,
+      "min_holder_change_pct": 10,
+      "min_organic_score": 60,
+      "min_price_change_24h_pct": 20,
+      "max_top10_pct": 25,
+      "min_lp_locked_pct": 0,
+      "max_below_ath_pct": 15,
+      "min_volume_jump": 1.5,
+      "min_higher_lows": 3
+    }
   },
   "sniper": {
     "position_pct_of_equity": 5,
@@ -140,7 +154,10 @@
       "add_pct_of_first": 25,
       "max_adds": 2,
       "min_gap_s": 300,
-      "min_buy_sell_ratio_m5": 0.8
+      "min_buy_sell_ratio_m5": 0.8,
+      "max_trims": 2,
+      "trim_pct": 50,
+      "moonbag_trailing_pct": 50
     }
   },
   "fomo": {
@@ -153,7 +170,9 @@
     "rpc_url": "https://api.mainnet-beta.solana.com"
   },
   "jupiter": {
-    "enabled": true
+    "enabled": true,
+    "live_prices": true,
+    "price_interval_s": 3
   },
   "gecko_new_pages": 3,
   "pumpportal": {

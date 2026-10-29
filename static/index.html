@@ -426,7 +426,7 @@ function renderPositions(s) {
     if (!ent.has(t0)) ent.set(t0, (p.entry_hist && p.entry_hist[0]) ? p.entry_hist[0][1] : p.entry_price);
     c.entry.setData([...ent.entries()].sort((x, y) => x[0] - y[0]).map(([time, value]) => ({ time, value })));
     const marks = (p.events || []).map(([ts, label]) => {
-      const tp = label.startsWith("TP"), dip = label.startsWith("Dip");
+      const tp = label.startsWith("TP") || label.startsWith("Teil"), dip = label.startsWith("Dip");
       return { time: clamp(ts), position: tp ? "aboveBar" : "belowBar", color: tp ? "#22c55e" : dip ? "#3b82f6" : "#f5b301",
                shape: tp ? "arrowDown" : "arrowUp", text: label };
     }).sort((x, y) => x.time - y.time);
@@ -513,9 +513,9 @@ function render(s) {
   $("activity").innerHTML = acts.slice(0, 60).map(a => `<div class="act"><time>${t(a.ts)}</time><span class="a" style="color:${colors[a.agent] || "inherit"}">${esc(a.agent)}</span><span>${esc(a.msg)}</span></div>`).join("");
 
   $("closedsub").textContent = `realisiert ${sgn(s.realized_pnl)}${usd(s.realized_pnl)}`;
-  $("closed").innerHTML = s.closed.length ? `<div class="tbl"><table><tr><th>Zeit</th><th>Token</th><th>Kauf-MCap</th><th>Einsatz</th><th>Erlös</th><th>PnL</th><th>Grund</th></tr>` +
+  $("closed").innerHTML = s.closed.length ? `<div class="tbl"><table><tr><th>Zeit</th><th>Token</th><th>Kauf-MCap</th><th>Einsatz</th><th>Erlös</th><th>PnL</th><th>Danach</th><th>Grund</th></tr>` +
     s.closed.map(c => `<tr><td>${t(c.closed_at)}</td><td><a href="${esc(c.url)}" target="_blank" rel="noopener">$${esc(c.symbol)}</a></td><td>${mc(c.entry_mcap || (c.entry || {}).mcap)}</td><td>${usd(c.cost_usd)}</td><td>${usd(c.proceeds_usd)}</td>
-      <td class="${c.pnl_usd >= 0 ? "up" : "down"}">${sgn(c.pnl_usd)}${usd(c.pnl_usd)} (${pct(c.pnl_pct)})</td><td>${esc(c.reason)}</td></tr>`).join("") + "</table></div>"
+      <td class="${c.pnl_usd >= 0 ? "up" : "down"}">${sgn(c.pnl_usd)}${usd(c.pnl_usd)} (${pct(c.pnl_pct)})</td><td title="Kurs nach dem Verkauf (Lern-Log, 6 h)">${c.after ? `<span class="${c.after.max_pct > 30 ? "down" : "up"}">bis ${pct(c.after.max_pct)}</span> / ${pct(c.after.min_pct)}` : "–"}</td><td>${esc(c.reason)}</td></tr>`).join("") + "</table></div>"
     : `<div class="empty">Noch keine abgeschlossenen Trades.</div>`;
 }
 
