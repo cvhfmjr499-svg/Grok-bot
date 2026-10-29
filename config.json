@@ -68,7 +68,7 @@
     "position_pct_of_equity": 8,
     "max_position_usd": 1000000,
     "min_position_usd": 5,
-    "max_open_positions": 0,
+    "max_open_positions": 6,
     "base_slippage_pct": 0.5,
     "fee_pct_per_side": 0.3,
     "network_fee_usd": 0.05,
