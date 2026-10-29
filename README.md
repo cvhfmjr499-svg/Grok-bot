@@ -5,7 +5,7 @@ Der Bot sucht die stärksten frischen Coins anhand echter On-Chain-Daten, mit 6 
 - **Scout:** nur Paare, die 30 Minuten bis 72 Stunden alt sind, Marktwert 300.000 $ bis 20 Mio. $ (DexScreener, Pump.fun-Live-Stream, Jupiter, GeckoTerminal, FOMO).
 - **Filter (harte Kills):** Mint oder Freeze nicht gesperrt, LP nicht verbrannt oder gesperrt, Liquidität unter 40.000 $, Volumen 1 h unter 50.000 $, Top-10 über 25 %, Dev über 3 % oder früherer Rug (Blacklist, Serien-Devs mit vielen gescheiterten Coins), Bundle/Insider über 10 %, schon +80 % in 1 h.
 - **Analyst:** Punkte 0 bis 100 aus Momentum, einzigartigen Käufern, Kauf/Verkauf-Verhältnis, Halter-Wachstum, Liquidität/Marktwert und Smart Wallets (beobachtete Trader-Wallets, echte Käufer laut Jupiter; FOMO ist aus). Nur ab **70** wird gekauft.
-- **Executor:** höchstens 8 % des Kontos pro Trade und höchstens **6 offene Positionen** gleichzeitig.
+- **Executor:** höchstens 8 % des Kontos pro Trade und höchstens **10 offene Positionen** gleichzeitig.
 - **Risk:** Stop-Loss −6 % (steht vor dem Kauf fest), Trailing-Stop ab +12 % mit 6 % Abstand. Notausstieg bei Rug-Anzeichen (abgezogene Liquidität, gesperrte Dev-Wallet).
 - **Logger:** Jeder Kill wird mit Stufe und Grund festgehalten (Seite: „Kill-Log“, Daten: `kill_log` in `state.json`).
 - Spielgeld (Paper), Start mit **100 €**, läuft rund um die Uhr auf GitHub. Einstellungen: `desk` in `config.json`.
