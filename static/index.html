@@ -475,10 +475,10 @@ function render(s) {
   $("pf-hot").innerHTML = pf.length ? `<div class="tbl"><table><tr><th>Coin</th><th>Vol 5 min</th><th>Käufe</th><th>MCap</th><th></th></tr>` +
     pf.map(([sym, mint, v, b, mcap, ex]) => `<tr><td><a href="https://dexscreener.com/solana/${esc(mint)}" target="_blank" rel="noopener">$${esc(sym)}</a></td><td>$${(v / 1e3).toFixed(1)}k</td><td>${b}</td><td>${mc(mcap)}</td><td>${ex ? '<span class="up">Börse</span>' : '<span style="color:var(--muted)">Kurve</span>'}</td></tr>`).join("") + `</table></div>`
     : `<div class="empty">Gerade nichts Heißes.</div>`;
-  const ww = s.wallets || { watch: {}, trades: [] }, names = Object.keys(ww.watch || {});
-  $("ww-card").style.display = names.length ? "" : "none";
+  const ww = s.wallets || { watch: {}, trades: [] }, wwNames = Object.keys(ww.watch || {});
+  $("ww-card").style.display = wwNames.length ? "" : "none";
   $("wwsub").textContent = ww.until ? "bis " + new Date(ww.until).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
-  $("wwnames").innerHTML = names.map(n => `<a href="https://solscan.io/account/${esc(ww.watch[n])}" target="_blank" rel="noopener">${esc(n)}</a>`).join(" · ");
+  $("wwnames").innerHTML = wwNames.map(n => `<a href="https://solscan.io/account/${esc(ww.watch[n])}" target="_blank" rel="noopener">${esc(n)}</a>`).join(" · ");
   $("ww-trades").innerHTML = (ww.trades || []).length ? `<div class="tbl"><table><tr><th>Zeit</th><th>Wer</th><th></th><th>Coin</th><th>SOL</th></tr>` +
     ww.trades.map(x => `<tr><td>${t(x.ts)}</td><td>${esc(x.who)}</td><td class="${x.side === "Kauf" ? "up" : "down"}">${esc(x.side)}</td><td><a href="https://dexscreener.com/solana/${esc(x.mint)}" target="_blank" rel="noopener">${x.symbol ? "$" + esc(x.symbol) : esc(x.mint.slice(0, 6)) + "…"}</a></td><td>${(x.sol || 0).toFixed(2)}</td></tr>`).join("") + `</table></div>`
     : `<div class="empty">Noch keine Trades gesehen.</div>`;
