@@ -10,7 +10,7 @@
   "analyst": {
     "min_liquidity_usd": 15000,
     "max_liquidity_usd": 2000000,
-    "min_age_minutes": 10,
+    "min_age_minutes": 15,
     "max_age_hours": 24,
     "min_volume_h1_usd": 1000,
     "min_mcap_usd": 10000,
@@ -158,6 +158,10 @@
       "max_trims": 2,
       "trim_pct": 50,
       "moonbag_trailing_pct": 50
+    },
+    "grace": {
+      "minutes": 3,
+      "stop_loss_pct": 40
     }
   },
   "fomo": {

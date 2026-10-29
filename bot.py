@@ -1208,8 +1208,10 @@ class Bot:
                     elif r.get("breakeven", {}).get("activate_pct") and peak_pnl >= r["breakeven"]["activate_pct"] and pnl <= r["breakeven"].get("lock_pct", 2):
                         # war schon deutlich im Plus -> nicht mehr ins Minus laufen lassen
                         reason = f"Break-even-Stop (Hoch {peak_pnl:+.0f}%, jetzt {pnl:+.0f}%)"
-                    elif pnl <= -r["stop_loss_pct"]:
-                        reason = f"Stop-Loss {pnl:+.1f}%"
+                    elif pnl <= -(r.get("grace", {}).get("stop_loss_pct", r["stop_loss_pct"])
+                                  if held_min < r.get("grace", {}).get("minutes", 0) else r["stop_loss_pct"]):
+                        # Schonfrist: frische Kaeufe schwanken in den ersten Minuten stark -> weiterer Stop
+                        reason = f"Stop-Loss {pnl:+.1f}%" + (" (Schonfrist)" if held_min < r.get("grace", {}).get("minutes", 0) else "")
                     elif r.get("take_profit_pct") and pnl >= r["take_profit_pct"]:
                         reason = f"Take-Profit {pnl:+.1f}%"
                     elif token in self.chart_exit:
