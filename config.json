@@ -49,7 +49,7 @@
     "min_volume_trend": 0.3,
     "dead_volume_any_pct": 2,
     "comeback": {
-      "enabled": true,
+      "enabled": false,
       "min_age_days": 2,
       "max_age_days": 365,
       "min_holders": 3000,
@@ -62,11 +62,11 @@
       "min_volume_jump": 1.5,
       "min_higher_lows": 3
     },
-    "rebuy_block_hours": 12
+    "rebuy_block_hours": 0
   },
   "sniper": {
-    "position_pct_of_equity": 5,
-    "max_position_usd": 500,
+    "position_pct_of_equity": 8,
+    "max_position_usd": 1000000,
     "min_position_usd": 5,
     "max_open_positions": 0,
     "base_slippage_pct": 0.5,
@@ -74,13 +74,13 @@
     "network_fee_usd": 0.05,
     "cooldown_minutes_per_token": 120,
     "pyramid": {
-      "enabled": true,
+      "enabled": false,
       "step_pct": 25,
       "add_pct_of_first": 25,
       "max_adds": 3
     },
     "dip_buy": {
-      "enabled": true,
+      "enabled": false,
       "candle_drop_pct": 6,
       "window_s": 120,
       "min_below_entry_pct": 8,
@@ -90,14 +90,14 @@
       "min_gap_s": 180,
       "min_buy_sell_ratio_m5": 0.8,
       "max_liq_drop_pct": 10,
-      "reserve_pct": 15
+      "reserve_pct": 0
     }
   },
   "risk": {
-    "stop_loss_pct": 25,
+    "stop_loss_pct": 6,
     "take_profit_pct": 0,
-    "trailing_activate_pct": 50,
-    "trailing_distance_pct": 25,
+    "trailing_activate_pct": 12,
+    "trailing_distance_pct": 6,
     "max_hold_minutes": 0,
     "exit_if_liquidity_drops_pct": 25,
     "rugwatch": {
@@ -112,7 +112,7 @@
       "panic_lp_pull_pct": 8
     },
     "partial_tp": {
-      "enabled": true,
+      "enabled": false,
       "levels": [
         [
           20,
@@ -131,20 +131,17 @@
       "then_sell_pct": 20
     },
     "hold_only_if_losing": true,
-    "trailing_distance_after_tp_pct": 15,
-    "chart_watch_minutes": 30,
-    "breakeven": {
-      "activate_pct": 20,
-      "lock_pct": 3
-    },
+    "trailing_distance_after_tp_pct": 0,
+    "chart_watch_minutes": 0,
+    "breakeven": {},
     "dead_volume_exit": {
-      "enabled": true,
+      "enabled": false,
       "max_trades_m5": 3,
       "max_volume_h1_usd": 3000,
       "minutes": 10
     },
     "runner": {
-      "enabled": true,
+      "enabled": false,
       "after_tp_level": 2,
       "trailing_pct": 30,
       "dip_buy": true,
@@ -161,8 +158,8 @@
       "moonbag_trailing_pct": 50
     },
     "grace": {
-      "minutes": 3,
-      "stop_loss_pct": 40
+      "minutes": 0,
+      "stop_loss_pct": 6
     }
   },
   "fomo": {
@@ -188,9 +185,7 @@
   "dev_blacklist": {
     "rug_loss_pct": 40
   },
-  "extra_chains": [
-    "robinhood"
-  ],
+  "extra_chains": [],
   "pumpfun_hot": {
     "enabled": true,
     "interval_s": 60,
@@ -208,5 +203,31 @@
       "Numerooo0": "A3W8psibkTUvjxs4LRscbnjux6TFDXdvD4m4GsGpQ2KJ"
     },
     "note": "Wallet laut Kolscan-Bestenliste (x.com/Numerooo0). Weitere Wallets hier eintragen: \"Name\": \"Adresse\"."
+  },
+  "desk": {
+    "enabled": true,
+    "_info": "Memecoin Desk: Scout -> Filter -> Analyst -> Executor -> Risk -> Logger (ersetzt die alte Kill-first-Strategie, Sicherung in backup/grokbot-v1)",
+    "min_age_minutes": 30,
+    "max_age_hours": 72,
+    "min_mcap_usd": 300000,
+    "max_mcap_usd": 20000000,
+    "min_liquidity_usd": 40000,
+    "min_volume_h1_usd": 50000,
+    "max_change_h1_pct": 80,
+    "min_lp_locked_pct": 90,
+    "max_top10_pct": 25,
+    "max_dev_pct": 3,
+    "serial_dev_min_mints": 20,
+    "serial_dev_max_success": 0.05,
+    "max_bundle_pct": 10,
+    "min_score": 70,
+    "weights": {
+      "momentum": 20,
+      "unique_buyers": 20,
+      "buy_sell": 15,
+      "holder_growth": 15,
+      "liq_mcap": 15,
+      "smart_wallets": 15
+    }
   }
 }

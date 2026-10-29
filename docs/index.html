@@ -148,14 +148,26 @@
 
     <div class="card">
       <h2>Pipeline <small id="pipesub"></small></h2>
-      <div class="agent"><div class="ico" style="background:var(--blue)">⌕</div><div class="nm"><b>Scout</b><span>finds new pairs</span></div><div class="what" id="w-scout"></div><span class="chip c-blue" id="k-scout">0</span></div>
-      <div class="agent"><div class="ico" style="background:var(--purple)">⛨</div><div class="nm"><b>Analyst</b><span>rug & holder checks</span></div><div class="what" id="w-analyst"></div><span class="chip c-purple" id="k-analyst">–</span></div>
-      <div class="agent"><div class="ico" style="background:var(--orange)">⚡</div><div class="nm"><b>Sniper</b><span>executes entries</span></div><div class="what" id="w-sniper"></div><span class="chip c-orange" id="k-sniper">0 fills</span></div>
-      <div class="agent"><div class="ico" style="background:var(--pink)">◔</div><div class="nm"><b>Risk</b><span>trails positions</span></div><div class="what" id="w-risk"></div><span class="chip c-pink" id="k-risk">0 open</span></div>
-      <div class="agent"><div class="ico" style="background:var(--green)">↗</div><div class="nm"><b>Banker</b><span>exits & banks</span></div><div class="what" id="w-banker"></div><span class="chip c-green" id="k-banker">$0</span></div>
+      <div class="agent"><div class="ico" style="background:var(--blue)">⌕</div><div class="nm"><b>Scout</b><span>30 min–72 h · $300k–20M</span></div><div class="what" id="w-scout"></div><span class="chip c-blue" id="k-scout">0</span></div>
+      <div class="agent"><div class="ico" style="background:#e5484d">✂</div><div class="nm"><b>Filter</b><span>harte Kills</span></div><div class="what" id="w-filter"></div><span class="chip c-red" id="k-filter">0</span></div>
+      <div class="agent"><div class="ico" style="background:var(--purple)">⛨</div><div class="nm"><b>Analyst</b><span>Score 0–100, ab 70</span></div><div class="what" id="w-analyst"></div><span class="chip c-purple" id="k-analyst">–</span></div>
+      <div class="agent"><div class="ico" style="background:var(--orange)">⚡</div><div class="nm"><b>Executor</b><span>max. 8 % pro Trade</span></div><div class="what" id="w-sniper"></div><span class="chip c-orange" id="k-sniper">0 fills</span></div>
+      <div class="agent"><div class="ico" style="background:var(--pink)">◔</div><div class="nm"><b>Risk</b><span>Stop −6 %, Trail ab +12 %</span></div><div class="what" id="w-risk"></div><span class="chip c-pink" id="k-risk">0 open</span></div>
+      <div class="agent"><div class="ico" style="background:var(--green)">✎</div><div class="nm"><b>Logger</b><span>jeder Kill</span></div><div class="what" id="w-banker"></div><span class="chip c-green" id="k-banker">0</span></div>
       <div class="agent" id="row-fomo"><div class="ico" style="background:#111;font-weight:800;font-size:13px">FO</div><div class="nm"><b>FOMO</b><span>was FOMO-Nutzer kaufen</span></div><div class="what" id="w-fomo"></div><span class="chip c-blue" id="k-fomo">aus</span></div>
     </div>
 
+
+    <div class="card" id="desk-scores-card">
+      <h2>Analyst-Scores <small id="scoresub"></small></h2>
+      <div class="sub" style="margin:-6px 0 6px">Momentum · einzigartige Käufer · Kauf/Verkauf · Halter-Wachstum · Liq/MCap · Smart Wallets. Nur ab 70 wird gekauft.</div>
+      <div id="desk-scores"></div>
+    </div>
+
+    <div class="card" id="kill-card">
+      <h2>Kill-Log <small id="killlogsub"></small></h2>
+      <div class="scroll" id="kill-log"></div>
+    </div>
 
     <div class="card">
       <h2>Activity <label class="toggle"><input type="checkbox" id="hideRej" checked> Ablehnungen ausblenden</label></h2>
@@ -467,11 +479,11 @@ function render(s) {
   window.LAST_STATE = s; setEquityData(s); goal(s.multiple, s.goal);
 
   const st = s.stats, last = a => s.last_msg[a];
-  $("pipesub").textContent = `5 agents · ${s.positions.length} in flight`;
+  $("pipesub").textContent = `${(s.desk || {}).enabled ? 6 : 5} agents · ${s.positions.length} in flight`;
   $("k-scout").textContent = (st.unique ?? st.scanned).toLocaleString() + " Coins · " + (s.scan_rate_min || 0).toFixed(0) + "/min";
   const names = { solana: "Solana", bsc: "BNB Chain", base: "Base", robinhood: "Robinhood" };
   const chainName = (s.chains || [s.chain]).map(c => names[c] || c).join(" + ");
-  document.querySelector(".sub").textContent = `${chainName} memes · ${st.stream_new ? "Live-Stream · " : ""}kill-first relay`;
+  document.querySelector(".sub").textContent = `${chainName} memes · ${st.stream_new ? "Live-Stream · " : ""}${(s.desk || {}).enabled ? "memecoin desk" : "kill-first relay"}`;
   const pf = s.pf_hot || [];
   $("pfsub").textContent = pf.length ? `${pf.length} Coins` : "";
   $("pf-hot").innerHTML = pf.length ? `<div class="tbl"><table><tr><th>Coin</th><th>Vol 5 min</th><th>Käufe</th><th>MCap</th><th></th></tr>` +
@@ -497,9 +509,33 @@ function render(s) {
   $("w-sniper").textContent = last("sniper")?.msg ?? "bereit";
   $("k-risk").textContent = s.positions.length + " open";
   $("w-risk").innerHTML = s.positions.length ? s.positions.slice(0, 3).map(p => `<b>$${esc(p.symbol)}</b> <span class="${p.pnl_pct >= 0 ? "up" : "down"}">${pct(p.pnl_pct)}</span>`).join(" · ") : "keine offenen Positionen";
-  $("k-banker").textContent = sgn(s.realized_pnl) + usd(s.realized_pnl, 0);
-  $("k-banker").className = "chip " + (s.realized_pnl >= 0 ? "c-green" : "c-red");
-  $("w-banker").textContent = last("banker")?.msg ?? "noch nichts verkauft";
+  const dk = s.desk || {};
+  if (dk.enabled) {
+    $("k-scout").textContent = (st.desk_scout || 0).toLocaleString() + " im Bereich";
+    $("k-filter").textContent = (st.desk_filter || 0).toLocaleString() + " Kills";
+    const lastF = (dk.kills || []).find(k => k.stage === "Filter");
+    $("w-filter").innerHTML = lastF ? `<b>$${esc(lastF.symbol)}</b> <span class="down">${esc(lastF.reason)}</span>` : "wartet";
+    $("k-analyst").textContent = (st.desk_scored || 0) + " bewertet · " + (st.desk_passed || 0) + " ≥ " + (dk.min_score || 70);
+    const sc = (dk.scores || [])[0];
+    $("w-analyst").innerHTML = sc ? `<b>$${esc(sc.symbol)}</b> <span class="${sc.score >= (dk.min_score || 70) ? "up" : "down"}">Score ${sc.score}</span>` : "wartet auf Filter";
+    $("k-banker").textContent = (st.desk_logged || 0).toLocaleString() + " geloggt";
+    $("k-banker").className = "chip c-green";
+    $("w-banker").textContent = sgn(s.realized_pnl) + usd(s.realized_pnl) + " realisiert";
+    $("scoresub").textContent = (dk.scores || []).length ? "letzte " + dk.scores.length : "";
+    const bar = v => `<span style="display:inline-block;width:34px;height:6px;border-radius:3px;background:var(--line);vertical-align:middle"><i style="display:block;height:6px;border-radius:3px;width:${v}%;background:${v >= 70 ? "var(--green)" : v >= 40 ? "var(--orange)" : "var(--red)"}"></i></span>`;
+    $("desk-scores").innerHTML = (dk.scores || []).length ? `<div class="tbl"><table><tr><th>Zeit</th><th>Coin</th><th>Score</th><th title="Momentum">Mom</th><th title="einzigartige Käufer">Käufer</th><th title="Kauf/Verkauf">K/V</th><th title="Halter-Wachstum">Halter</th><th title="Liquidität/MCap">Liq</th><th title="Smart Wallets">Smart</th></tr>` +
+      dk.scores.map(x => `<tr><td>${t(x.ts)}</td><td><a href="https://dexscreener.com/solana/${esc(x.mint)}" target="_blank" rel="noopener">$${esc(x.symbol)}</a></td><td class="${x.score >= (dk.min_score || 70) ? "up" : "down"}"><b>${x.score}</b></td>` +
+        ["momentum", "unique_buyers", "buy_sell", "holder_growth", "liq_mcap", "smart_wallets"].map(k => `<td>${bar(x.parts[k] || 0)}</td>`).join("") + `</tr>`).join("") + `</table></div>`
+      : `<div class="empty">Noch kein Coin hat den Filter geschafft.</div>`;
+    $("killlogsub").textContent = (st.desk_logged || 0).toLocaleString() + " Kills";
+    $("kill-log").innerHTML = (dk.kills || []).length ? dk.kills.map(k => `<div class="act"><time>${t(k.ts)}</time><span class="a" style="color:${k.stage === "Filter" ? "var(--red)" : "var(--purple)"}">${esc(k.stage)}</span><span><b>$${esc(k.symbol)}</b> ${esc(k.reason)}</span></div>`).join("")
+      : `<div class="empty">Noch keine Kills.</div>`;
+  } else {
+    $("k-banker").textContent = sgn(s.realized_pnl) + usd(s.realized_pnl, 0);
+    $("k-banker").className = "chip " + (s.realized_pnl >= 0 ? "c-green" : "c-red");
+    $("w-banker").textContent = last("banker")?.msg ?? "noch nichts verkauft";
+    $("desk-scores-card").style.display = $("kill-card").style.display = "none";
+  }
 
   const f = s.fomo || { enabled: false, hot: [] };
   $("fomo-card").style.display = f.enabled ? "" : "none";
