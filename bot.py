@@ -998,10 +998,28 @@ class Bot:
         # grobes Modell: Basis + Preiswirkung abhaengig von Ordergroesse/Liquiditaet
         return self.cfg["sniper"]["base_slippage_pct"] + 100 * size_usd / max(liq_usd, 1)
 
+    def live_price(self, token):
+        """Aktueller Preis von Jupiter (Solana), ohne Drossel - fuer den Kauf. 0 = unbekannt."""
+        if self.chain != "solana" or not self.cfg.get("jupiter", {}).get("live_prices", True):
+            return 0.0
+        try:
+            d = http_json("https://lite-api.jup.ag/price/v3?ids=" + token, timeout=5) or {}
+            return fnum((d.get(token) or {}).get("usdPrice"))
+        except Exception:
+            return 0.0
+
     def buy(self, pair, info):
         s = self.cfg["sniper"]
         token = pair["baseToken"]["address"]
         sym = pair["baseToken"].get("symbol", "?")
+        # DexScreener-Preise sind oft 30-60 s alt: zum aktuellen Preis kaufen und nicht in einen laufenden Absturz hinein
+        dex_price = fnum(pair["priceUsd"])
+        jp = self.live_price(token)
+        if jp and dex_price and jp < dex_price * (1 - s.get("max_live_price_drop_pct", 10) / 100):
+            self.log("sniper", f"${sym} uebersprungen - faellt gerade (aktuell {(jp / dex_price - 1) * 100:.0f}% unter DexScreener)", "warn")
+            with self.lock:
+                self.next_check[token] = now() + 300
+            return
         with self.lock:
             if token in self.positions:
                 return
@@ -1023,7 +1041,7 @@ class Bot:
                 self.log("sniper", f"${sym} uebersprungen - zu wenig Cash", "warn")
                 return
             liq = info["liq"]
-            price = fnum(pair["priceUsd"])
+            price = jp if jp and jp < dex_price * 1.3 else dex_price  # aktueller Preis, wenn plausibel
             fill = price * (1 + self.slippage_pct(size, liq) / 100)
             fee = size * s["fee_pct_per_side"] / 100 + s["network_fee_usd"]
             qty = (size - fee) / fill
