@@ -73,5 +73,14 @@
   "ts": 1793307001.7526224,
   "reason": "Stop-Loss -40.8% (Schonfrist)",
   "pnl_pct": -41.8
+ },
+ "CGyCuvEBcTqFsraAzPefFVxGRtcFdr9eq9pscL4NNHga": {
+  "symbol": "HYPERCHAN",
+  "name": "Hyper-Chan",
+  "token": "3ApVr1xphYMpi9dn3rpqU4hwvpmCQDVwxET1rdCDpump",
+  "chain": "solana",
+  "ts": 1793345876.9730792,
+  "reason": "Soft-Rug-Alarm: Fake-Handel ($8.0 pro Trade bei 16724 Trades/1h) (Rug-Gefahr)",
+  "pnl_pct": -1.9
  }
 }
