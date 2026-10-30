@@ -12,7 +12,7 @@ permissions:
   issues: write  # Rug-Meldungen von der Handy-Seite (Issue "RUG <Adresse>") lesen, beantworten, schliessen
 
 concurrency:
-  group: grok-bot
+  group: grok-safe-desk
   cancel-in-progress: false
 
 jobs:
