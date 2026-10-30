@@ -1178,7 +1178,8 @@ class Bot:
                         h = live["hist"]
                         if not h or now() - h[-1][0] >= 60:
                             h.append([now(), price])
-                            del h[:-1500]
+                            if len(h) > 1500:  # unbegrenzt laufen: aeltere Haelfte ausduennen statt loeschen
+                                h[:750] = h[:750:2]
             except Exception as e:
                 self.log("system", f"Hand-Trades: {e}", "warn")
             self.stop_event.wait(20)
