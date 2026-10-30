@@ -494,7 +494,10 @@ function renderManual(s) {
       <div class="pnlrow" style="margin-top:2px"><span style="color:var(--muted)">MCap ${mc(m.entry_mcap)} → ${mc(m.mcap)}</span><span style="color:var(--muted)">Hoch ${pct(m.peak_pct)}</span></div>
       ${m.note ? `<div class="sub" style="margin-top:4px">${esc(m.note)}</div>` : ""}
     </div>`;
-  }).join("");
+  }).join("") + (ms.length > 1 ? (() => {
+    const c = ms.reduce((a, m) => a + m.cost_usd, 0), v = ms.reduce((a, m) => a + m.value_usd, 0), d = v - c;
+    return `<div class="pnlrow" style="border-top:1px solid var(--line);padding-top:8px"><span><b>Gesamt</b> <span style="color:var(--muted)">Einsatz ${usd(c)} → ${usd(v)}</span></span><b class="${d >= 0 ? "up" : "down"}">${sgn(d)}${usd(d)} (${pct(d / c * 100)})</b></div>`;
+  })() : "");
 }
 
 function renderSafe(s) {

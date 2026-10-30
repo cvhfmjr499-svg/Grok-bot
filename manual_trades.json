@@ -17,6 +17,23 @@
       "entry_mcap": 2252647,
       "note": "Von Hand gekauft (Spielgeld), 2 % Slippage + 0,3 % Gebühr eingerechnet. Bot-Regeln gelten hier nicht.",
       "cost_usd": 111.3
+    },
+    {
+      "id": "safu-2",
+      "symbol": "SAFU",
+      "name": "SAFU Fund",
+      "chain": "bsc",
+      "token": "0x7c907D1CE734B73e9236DCd06cefcB6346857777",
+      "pair": "0x20dA3Ebe08379117fDB7f15Ff55456813b546554",
+      "url": "https://dexscreener.com/bsc/0x20da3ebe08379117fdb7f15ff55456813b546554",
+      "eur": 1000,
+      "cost_usd": 1113.0,
+      "opened_at": 1793370772.4217482,
+      "entry_price": 0.0017385019834628575,
+      "market_price": 0.00169,
+      "qty": 638285.7256163191,
+      "entry_mcap": 1690673,
+      "note": "Nachkauf von Hand (Spielgeld), 2.9 % Slippage + 0,3 % Gebühr eingerechnet. Läuft unbegrenzt."
     }
   ]
 }
