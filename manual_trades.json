@@ -16,7 +16,11 @@
       "qty": 48308.3011179605,
       "entry_mcap": 2252647,
       "note": "Von Hand gekauft (Spielgeld), 2 % Slippage + 0,3 % Gebühr eingerechnet. Bot-Regeln gelten hier nicht.",
-      "cost_usd": 111.3
+      "cost_usd": 111.3,
+      "closed_at": 1793383426.4083347,
+      "exit_price": 0.001328,
+      "exit_mcap": 1328028,
+      "exit_cost_pct": 2.35
     },
     {
       "id": "safu-2",
@@ -33,7 +37,28 @@
       "market_price": 0.00169,
       "qty": 638285.7256163191,
       "entry_mcap": 1690673,
-      "note": "Nachkauf von Hand (Spielgeld), 2.9 % Slippage + 0,3 % Gebühr eingerechnet. Läuft unbegrenzt."
+      "note": "Nachkauf von Hand (Spielgeld), 2.9 % Slippage + 0,3 % Gebühr eingerechnet. Läuft unbegrenzt.",
+      "closed_at": 1793383426.4084072,
+      "exit_price": 0.001328,
+      "exit_mcap": 1328028,
+      "exit_cost_pct": 3.02
+    },
+    {
+      "id": "probe-1",
+      "symbol": "PROBE",
+      "name": "Probe",
+      "chain": "solana",
+      "token": "DR3Jtxwzkw9uBpi6Bz7qJX7zuFSJkNKXthD8nB1mpump",
+      "pair": "7Ma1oVstuRrXLEQB3B7Dxe3ZY8LHLMduuaWv3adeAMvN",
+      "url": "https://dexscreener.com/solana/7ma1ovsturrxleqb3b7dxe3zy8lhlmduuawv3adeamvn",
+      "eur": 1000,
+      "cost_usd": 1113.0,
+      "opened_at": 1793383426.408472,
+      "entry_price": 4.390013659200989e-05,
+      "market_price": 4.013e-05,
+      "qty": 25276937.297775187,
+      "entry_mcap": 38401,
+      "note": "Von Hand gekauft (Spielgeld), 9.4 % Slippage (wenig Liquidität) + 0,3 % Gebühr. RugCheck: Dev hat schon Rugs gemacht. Läuft unbegrenzt."
     }
   ]
 }

@@ -488,15 +488,15 @@ function renderManual(s) {
   $("manual").innerHTML = ms.map(m => {
     const up = m.pnl_usd >= 0, cls = up ? "up" : "down";
     return `<div style="margin-bottom:12px">
-      <div class="pnlrow"><span><a href="${esc(m.url || "")}" target="_blank" rel="noopener"><b>$${esc(m.symbol)}</b></a> <span style="color:var(--muted)">${esc(chainN[m.chain] || m.chain)} · ${m.closed_at ? "verkauft" : "offen"} seit ${t(m.opened_at)}</span></span>
+      <div class="pnlrow"><span><a href="${esc(m.url || "")}" target="_blank" rel="noopener"><b>$${esc(m.symbol)}</b></a> <span style="color:var(--muted)">${esc(chainN[m.chain] || m.chain)} · ${m.closed_at ? "verkauft " + t(m.closed_at) : "offen seit " + t(m.opened_at)}</span></span>
       <b class="${cls}">${sgn(m.pnl_usd)}${usd(m.pnl_usd)} (${pct(m.pnl_pct)})</b></div>
-      <div class="pnlrow" style="margin-top:4px"><span style="color:var(--muted)">Einsatz ${usd(m.cost_usd)} → Wert jetzt</span><b>${usd(m.value_usd)}</b></div>
+      <div class="pnlrow" style="margin-top:4px"><span style="color:var(--muted)">Einsatz ${usd(m.cost_usd)} → ${m.closed_at ? "Erlös" : "Wert jetzt"}</span><b>${usd(m.value_usd)}</b></div>
       <div class="pnlrow" style="margin-top:2px"><span style="color:var(--muted)">MCap ${mc(m.entry_mcap)} → ${mc(m.mcap)}</span><span style="color:var(--muted)">Hoch ${pct(m.peak_pct)}</span></div>
       ${m.note ? `<div class="sub" style="margin-top:4px">${esc(m.note)}</div>` : ""}
     </div>`;
   }).join("") + (ms.length > 1 ? (() => {
     const c = ms.reduce((a, m) => a + m.cost_usd, 0), v = ms.reduce((a, m) => a + m.value_usd, 0), d = v - c;
-    return `<div class="pnlrow" style="border-top:1px solid var(--line);padding-top:8px"><span><b>Gesamt</b> <span style="color:var(--muted)">Einsatz ${usd(c)} → ${usd(v)}</span></span><b class="${d >= 0 ? "up" : "down"}">${sgn(d)}${usd(d)} (${pct(d / c * 100)})</b></div>`;
+    return `<div class="pnlrow" style="border-top:1px solid var(--line);padding-top:8px"><span><b>Gesamt</b> <span style="color:var(--muted)">offen + verkauft · Einsatz ${usd(c)} → ${usd(v)}</span></span><b class="${d >= 0 ? "up" : "down"}">${sgn(d)}${usd(d)} (${pct(d / c * 100)})</b></div>`;
   })() : "");
 }
 

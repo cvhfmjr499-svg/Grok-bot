@@ -1187,12 +1187,16 @@ class Bot:
     def manual_view(self):
         out = []
         rate = self.cfg.get("usd_pro_eur", 1)
-        exit_cost = (self.cfg["sniper"]["base_slippage_pct"] + self.cfg["sniper"]["fee_pct_per_side"]) / 100
+        sn = self.cfg["sniper"]
         for tr in self.manual_trades():
             live = self.manual_live.get(tr["id"], {})
             cost = tr.get("cost_usd") or tr["eur"] * rate
             price = tr.get("exit_price") or live.get("price") or tr["entry_price"]
-            value = tr["qty"] * price * (1 - exit_cost)
+            gross = tr["qty"] * price
+            # Verkaufskosten wie beim echten Verkauf: Basis-Slippage + Preiswirkung (Groesse/Liquiditaet) + Gebuehr
+            exit_cost = tr.get("exit_cost_pct") if tr.get("closed_at") else (
+                sn["base_slippage_pct"] + 100 * gross / max(live.get("liq") or 1e12, 1) + sn["fee_pct_per_side"])
+            value = gross * (1 - min(exit_cost, 100) / 100)
             out.append({"id": tr["id"], "symbol": tr["symbol"], "chain": tr["chain"], "token": tr["token"], "url": tr.get("url"),
                         "opened_at": tr["opened_at"], "closed_at": tr.get("closed_at"), "cost_usd": cost, "value_usd": value,
                         "pnl_usd": value - cost, "pnl_pct": (value / cost - 1) * 100, "entry_price": tr["entry_price"], "price": price,
