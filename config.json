@@ -1,0 +1,269 @@
+{
+  "chain": "solana",
+  "start_kapital_eur": 100,
+  "anzeige_waehrung": "EUR",
+  "usd_pro_eur": 1.115,
+  "start_balance_usd": 111.5,
+  "goal_multiple": 1.5,
+  "scout_interval_s": 20,
+  "risk_interval_s": 1,
+  "analyst": {
+    "min_liquidity_usd": 15000,
+    "max_liquidity_usd": 2000000,
+    "min_age_minutes": 15,
+    "max_age_hours": 24,
+    "min_volume_h1_usd": 1000,
+    "min_mcap_usd": 10000,
+    "max_mcap_usd": 50000000.0,
+    "min_buys_h1": 5,
+    "min_buy_sell_ratio_h1": 1.3,
+    "min_change_h1_pct": -10,
+    "max_change_m5_pct": 25,
+    "max_change_h1_pct": 80,
+    "use_rugcheck": true,
+    "max_rugcheck_score_normalised": 40,
+    "reject_danger_risks": true,
+    "min_lp_locked_pct": 90,
+    "min_organic_score": 0,
+    "min_volume_h24_usd": 40000,
+    "max_top10_pct": 30,
+    "max_losses_per_token": 2,
+    "use_goplus": true,
+    "max_tax_pct": 10,
+    "use_dev_blacklist": true,
+    "max_insider_pct": 10,
+    "max_sell_buy_ratio_h1": 3,
+    "max_sell_buy_ratio_h6": 2.5,
+    "max_liq_shrink_pct_90m": 15,
+    "max_crash_h6_pct": 60,
+    "max_crash_h24_pct": 75,
+    "min_avg_trade_usd": 8,
+    "block_copycats": true,
+    "chart_check": true,
+    "max_candle_crash_pct": 90,
+    "max_below_ath_pct": 95,
+    "dead_below_ath_pct": 80,
+    "dead_volume_pct": 2.5,
+    "chart_optional_below_min": 180,
+    "min_trades_m5": 5,
+    "min_volume_trend": 0.3,
+    "dead_volume_any_pct": 2,
+    "comeback": {
+      "enabled": false,
+      "min_age_days": 2,
+      "max_age_days": 365,
+      "min_holders": 3000,
+      "min_holder_change_pct": 10,
+      "min_organic_score": 60,
+      "min_price_change_24h_pct": 20,
+      "max_top10_pct": 25,
+      "min_lp_locked_pct": 0,
+      "max_below_ath_pct": 15,
+      "min_volume_jump": 1.5,
+      "min_higher_lows": 3
+    },
+    "rebuy_block_hours": 0
+  },
+  "sniper": {
+    "position_pct_of_equity": 6,
+    "max_position_usd": 1000000,
+    "min_position_usd": 5,
+    "max_open_positions": 5,
+    "base_slippage_pct": 2.0,
+    "fee_pct_per_side": 0.3,
+    "network_fee_usd": 0.05,
+    "cooldown_minutes_per_token": 1440,
+    "pyramid": {
+      "enabled": false,
+      "step_pct": 25,
+      "add_pct_of_first": 25,
+      "max_adds": 3
+    },
+    "dip_buy": {
+      "enabled": false,
+      "candle_drop_pct": 6,
+      "window_s": 120,
+      "min_below_entry_pct": 8,
+      "max_below_entry_pct": 18,
+      "add_pct_of_first": 25,
+      "max_adds": 2,
+      "min_gap_s": 180,
+      "min_buy_sell_ratio_m5": 0.8,
+      "max_liq_drop_pct": 10,
+      "reserve_pct": 0
+    }
+  },
+  "risk": {
+    "stop_loss_pct": 12,
+    "take_profit_pct": 0,
+    "trailing_activate_pct": 20,
+    "trailing_distance_pct": 10,
+    "max_hold_minutes": 0,
+    "exit_if_liquidity_drops_pct": 30,
+    "rugwatch": {
+      "enabled": true,
+      "sell_buy_ratio_m5": 5,
+      "min_sells_m5": 30,
+      "recheck_minutes": 10,
+      "max_insider_pct": 15,
+      "liq_drain_pct_90m": 15,
+      "insider_dump_pts": 1.5,
+      "crash_pct_2m": 50,
+      "panic_lp_pull_pct": 8,
+      "dev_sell_pts": 0.3
+    },
+    "partial_tp": {
+      "enabled": false,
+      "levels": [
+        [
+          20,
+          25
+        ],
+        [
+          50,
+          25
+        ],
+        [
+          100,
+          20
+        ]
+      ],
+      "then_every_pct": 50,
+      "then_sell_pct": 20
+    },
+    "hold_only_if_losing": true,
+    "trailing_distance_after_tp_pct": 0,
+    "chart_watch_minutes": 0,
+    "breakeven": {},
+    "dead_volume_exit": {
+      "enabled": false,
+      "max_trades_m5": 3,
+      "max_volume_h1_usd": 3000,
+      "minutes": 10
+    },
+    "runner": {
+      "enabled": false,
+      "after_tp_level": 2,
+      "trailing_pct": 30,
+      "dip_buy": true,
+      "min_gain_pct": 30,
+      "window_s": 180,
+      "min_red_pct": 8,
+      "max_red_pct": 20,
+      "add_pct_of_first": 25,
+      "max_adds": 2,
+      "min_gap_s": 300,
+      "min_buy_sell_ratio_m5": 0.8,
+      "max_trims": 2,
+      "trim_pct": 50,
+      "moonbag_trailing_pct": 50
+    },
+    "grace": {
+      "minutes": 0,
+      "stop_loss_pct": 12
+    },
+    "time_exit_minutes": 90,
+    "time_exit_min_gain_pct": 5,
+    "time_exit_volume_ratio": 0.5,
+    "daily_loss_limit_pct": 10,
+    "loss_streak_max": 3,
+    "loss_streak_pause_min": 60
+  },
+  "fomo": {
+    "enabled": false,
+    "min_wallets": 3,
+    "window_minutes": 10,
+    "poll_interval_s": 15,
+    "tx_per_cycle": 40,
+    "rpc_delay_s": 0.4,
+    "rpc_url": "https://api.mainnet-beta.solana.com"
+  },
+  "jupiter": {
+    "enabled": true,
+    "live_prices": true,
+    "price_interval_s": 3
+  },
+  "gecko_new_pages": 3,
+  "pumpportal": {
+    "enabled": true,
+    "watch_minutes": 60,
+    "first_check_minutes": 5
+  },
+  "dev_blacklist": {
+    "rug_loss_pct": 40
+  },
+  "extra_chains": [],
+  "pumpfun_hot": {
+    "enabled": true,
+    "interval_s": 60,
+    "track_hours": 6,
+    "max_tokens": 1200,
+    "min_buys_m5": 15,
+    "min_volume_m5_usd": 3000,
+    "top_n": 15
+  },
+  "watch_wallets": {
+    "enabled": true,
+    "until": "2027-12-31T00:00:00Z",
+    "poll_s": 20,
+    "wallets": {
+      "Numerooo0": "A3W8psibkTUvjxs4LRscbnjux6TFDXdvD4m4GsGpQ2KJ"
+    },
+    "note": "Bewaehrte Wallets fuer Judge-Frage d (kauft und haelt). Weitere Wallets hier eintragen: \"Name\": \"Adresse\"."
+  },
+  "desk": {
+    "enabled": true,
+    "_info": "Safe Desk: Markt-Regler -> Scout -> Filter -> Judge -> Executor -> Risk -> Logger",
+    "min_age_minutes": 30,
+    "max_age_hours": 72,
+    "min_mcap_usd": 300000,
+    "max_mcap_usd": 20000000,
+    "min_liquidity_usd": 40000,
+    "min_volume_h1_usd": 50000,
+    "max_change_h1_pct": 80,
+    "min_lp_locked_pct": 90,
+    "max_top10_pct": 25,
+    "max_dev_pct": 3,
+    "serial_dev_min_mints": 20,
+    "serial_dev_max_success": 0.05,
+    "max_bundle_pct": 10,
+    "min_score": 70,
+    "judge_weights": {
+      "buyers": 30,
+      "holders": 25,
+      "flow": 25,
+      "smart": 20
+    },
+    "smart_unknown_p": 0.3,
+    "block_copycats": true,
+    "copycat_mcap_factor": 3,
+    "fake_min_trades_h1": 300,
+    "fake_min_avg_trade_usd": 8,
+    "min_organic_score": 15,
+    "dev_selling_pts": 0.5
+  },
+  "market": {
+    "interval_s": 120,
+    "min_dial": 0.5,
+    "calm_minutes": 60,
+    "sol_crash_1h_pct": 8,
+    "btc_crash_1h_pct": 5,
+    "depeg_pct": 2,
+    "block_without_dial": true,
+    "weights": {
+      "sol": 0.3,
+      "btc": 0.2,
+      "meme": 0.25,
+      "rugs": 0.25
+    }
+  },
+  "health": {
+    "stale_minutes": 30
+  },
+  "go_live": {
+    "min_days": 7,
+    "min_trades": 50,
+    "max_drawdown_pct": 20,
+    "win_loss_ratio": 1.5
+  }
+}

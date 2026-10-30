@@ -1,0 +1,73 @@
+name: Grok Bot (Dauerbetrieb)
+
+# Jeder Lauf dauert ca. 5 h 40 min. Der Zeitplan startet alle 15 Minuten einen neuen Lauf; durch die
+# concurrency-Gruppe wartet er, bis der vorige fertig ist. So laeuft der Bot praktisch ohne Pause.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write  # Rug-Meldungen von der Handy-Seite (Issue "RUG <Adresse>") lesen, beantworten, schliessen
+
+concurrency:
+  group: grok-bot
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355  # GitHub erlaubt hoechstens 6 h pro Lauf
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Playwright fuer Screenshots (nutzt das vorinstallierte Chrome)
+        run: pip install -q playwright
+      - name: Bot laufen lassen und Stand regelmaessig speichern
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "Grok Bot (GitHub)"
+          git config user.email "bot@local"
+          python scripts/build_docs.py
+          save() {
+            git add state.json dev_blacklist.json docs 2>/dev/null || true  # docs enthaelt auch docs/screenshots
+            git add state_*.json 2>/dev/null || true  # Stand weiterer Chains (z. B. state_robinhood.json)
+            git diff --cached --quiet && return 0
+            git commit -q -m "Bot-Lauf: Stand $(date -u +%H:%M) UTC"
+            # Der Bot schreibt waehrenddessen weiter in seine Dateien -> --autostash, sonst verweigert git den Abgleich
+            for attempt in 1 2 3; do
+              git push -q origin main && return 0
+              git pull -q --rebase --autostash -X theirs origin main && git push -q origin main && return 0
+              sleep 5
+            done
+            echo "Push fehlgeschlagen, naechster Versuch beim naechsten Speichern"
+          }
+          # ein Lauf dauert ca. 5 h 40 min (GitHub erlaubt hoechstens 6 h), danach startet sofort der naechste
+          python bot.py --headless --minutes 340 --export docs/data/state.json --export-every 20 &
+          BOT=$!
+          n=0
+          while kill -0 $BOT 2>/dev/null; do
+            sleep 60
+            n=$((n + 1))
+            # jede Stunde ein Screenshot der Handy-Seite
+            if [ $((n % 60)) -eq 0 ]; then python scripts/screenshot.py || echo "Screenshot fehlgeschlagen"; fi
+            save
+          done
+          wait $BOT || true
+          save
+      # eigener Schritt: laeuft auch, wenn der Lauf abgebrochen wurde (z. B. beim Neustart nach einem Update)
+      - name: Screenshot der Handy-Seite speichern
+        if: always()
+        run: |
+          python scripts/screenshot.py || { echo "Screenshot fehlgeschlagen"; exit 0; }
+          git add docs/screenshots
+          git diff --cached --quiet && exit 0
+          git commit -q -m "Screenshot nach dem Lauf"
+          for attempt in 1 2 3; do
+            git pull -q --rebase --autostash -X theirs origin main && git push -q origin main && exit 0
+            sleep 5
+          done
