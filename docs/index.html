@@ -146,6 +146,11 @@
       <div class="pnlrow"><span id="goaltxt">Goal</span><span id="cash">Cash</span></div>
     </div>
 
+    <div class="card" id="manual-card" style="display:none">
+      <h2>Hand-Trades <small>Spielgeld · nicht Teil des Bots</small></h2>
+      <div id="manual"></div>
+    </div>
+
     <div class="card">
       <h2>Pipeline <small id="pipesub"></small></h2>
       <div class="agent"><div class="ico" style="background:var(--blue)">⌕</div><div class="nm"><b>Scout</b><span>30 min–72 h · $300k–20M</span></div><div class="what" id="w-scout"></div><span class="chip c-blue" id="k-scout">0</span></div>
@@ -478,6 +483,22 @@ function goal(mult, g) {
     steps.map(s => `<div class="mark ${mult >= s ? "done" : ""}" style="left:${pos(s)}%"><label>${s}×</label></div>`).join("");
 }
 
+function renderManual(s) {
+  const ms = s.manual || [];
+  $("manual-card").style.display = ms.length ? "" : "none";
+  const chainN = { solana: "Solana", bsc: "BNB Chain", base: "Base" };
+  $("manual").innerHTML = ms.map(m => {
+    const up = m.pnl_usd >= 0, cls = up ? "up" : "down";
+    return `<div style="margin-bottom:12px">
+      <div class="pnlrow"><span><a href="${esc(m.url || "")}" target="_blank" rel="noopener"><b>$${esc(m.symbol)}</b></a> <span style="color:var(--muted)">${esc(chainN[m.chain] || m.chain)} · ${m.closed_at ? "verkauft" : "offen"} seit ${t(m.opened_at)}</span></span>
+      <b class="${cls}">${sgn(m.pnl_usd)}${usd(m.pnl_usd)} (${pct(m.pnl_pct)})</b></div>
+      <div class="pnlrow" style="margin-top:4px"><span style="color:var(--muted)">Einsatz ${usd(m.cost_usd)} → Wert jetzt</span><b>${usd(m.value_usd)}</b></div>
+      <div class="pnlrow" style="margin-top:2px"><span style="color:var(--muted)">MCap ${mc(m.entry_mcap)} → ${mc(m.mcap)}</span><span style="color:var(--muted)">Hoch ${pct(m.peak_pct)}</span></div>
+      ${m.note ? `<div class="sub" style="margin-top:4px">${esc(m.note)}</div>` : ""}
+    </div>`;
+  }).join("");
+}
+
 function renderSafe(s) {
   const sf = s.safe;
   ["market-card", "recap-card", "honesty-card"].forEach(id => $(id).style.display = sf ? "" : "none");
@@ -535,7 +556,7 @@ function render(s) {
 
   const st = s.stats, last = a => s.last_msg[a];
   $("pipesub").textContent = `${(s.desk || {}).enabled ? 6 : 5} agents · ${s.positions.length} in flight`;
-  renderSafe(s);
+  renderSafe(s); renderManual(s);
   $("k-scout").textContent = (st.unique ?? st.scanned).toLocaleString() + " Coins · " + (s.scan_rate_min || 0).toFixed(0) + "/min";
   const names = { solana: "Solana", bsc: "BNB Chain", base: "Base", robinhood: "Robinhood" };
   const chainName = (s.chains || [s.chain]).map(c => names[c] || c).join(" + ");

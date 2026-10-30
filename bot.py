@@ -362,6 +362,7 @@ class Bot:
         self.sym_best = {}          # Ticker -> (mint, MCap) des groessten Coins mit diesem Namen (Nachahmer)
         self.source_last = {}       # Quelle -> zuletzt etwas geliefert (ts)
         self.health_warned = 0
+        self.manual_live = {}       # Hand-Trades (Spielgeld, getrennt vom Bot): id -> {"price", "peak", "hist", ...}
         self.symbols = {}           # mint -> Symbol (fuers Dashboard)
         self.source = {}          # token -> Quelle, ueber die der Scout ihn gefunden hat
         self.cooldown = {}        # token -> nicht vor ts erneut kaufen
@@ -403,6 +404,7 @@ class Bot:
             self.kill_log = s.get("kill_log") or []
             self.desk_scores = s.get("desk_scores") or []
             self.meme_samples = s.get("meme_samples") or []
+            self.manual_live = s.get("manual_live") or {}
             self.day = s.get("day") or self.day
             self.loss_streak, self.pause_until = s.get("loss_streak", 0), s.get("pause_until", 0)
             m = s.get("market") or {}
@@ -428,7 +430,7 @@ class Bot:
                 "equity_history": self.equity_history[-2000:], "equity_long": self.equity_long, "cooldown": self.cooldown,
                 "wallet_trades": self.ww_trades[-200:], "wallet_last_sig": self.ww_last_sig,
                 "kill_log": self.kill_log[-5000:], "desk_scores": self.desk_scores[-200:],
-                "meme_samples": self.meme_samples[-200:], "day": self.day, "loss_streak": self.loss_streak,
+                "meme_samples": self.meme_samples[-200:], "manual_live": self.manual_live, "day": self.day, "loss_streak": self.loss_streak,
                 "pause_until": self.pause_until,
                 "market": {k: self.market[k] for k in ("alert", "alert_since", "good_since")},
                 "pf_track": {m: ts for m, ts in self.first_seen.items() if now() - ts <= 6 * 3600 and m not in self.pf_dead
@@ -1147,6 +1149,56 @@ class Bot:
                 m["alert"] = None
             m.update({"dial": None if dial is None else round(dial, 2), "parts": {k: (None if v is None else round(v, 2)) for k, v in parts.items()},
                       "ts": t, "info": info, "alert_now": alert})
+
+    # ================= Hand-Trades: von Hand angelegte Spielgeld-Kaeufe (manual_trades.json) =================
+    def manual_trades(self):
+        try:
+            with open(os.path.join(HERE, "manual_trades.json"), encoding="utf-8") as f:
+                return json.load(f).get("trades", [])
+        except (OSError, ValueError):
+            return []
+
+    def manual_loop(self):
+        """Kurse der Hand-Trades verfolgen (jede Chain, ueber DexScreener). Zaehlt nicht zur Bot-Statistik."""
+        while not self.stop_event.is_set():
+            try:
+                for tr in self.manual_trades():
+                    if tr.get("closed_at"):
+                        continue
+                    d = http_json(f"{DEX}/tokens/v1/{tr['chain']}/{tr['token']}") or []
+                    p = next((x for x in d if (x.get("pairAddress") or "").lower() == (tr.get("pair") or "").lower()), None)
+                    p = p or max(d, key=lambda x: fnum((x.get("liquidity") or {}).get("usd")), default=None)
+                    if not p or fnum(p.get("priceUsd")) <= 0:
+                        continue
+                    price = fnum(p["priceUsd"])
+                    with self.lock:
+                        live = self.manual_live.setdefault(tr["id"], {"peak": price, "hist": []})
+                        live.update({"price": price, "mcap": fnum(p.get("marketCap") or p.get("fdv")), "liq": fnum((p.get("liquidity") or {}).get("usd")),
+                                     "ts": now(), "peak": max(live.get("peak", price), price)})
+                        h = live["hist"]
+                        if not h or now() - h[-1][0] >= 60:
+                            h.append([now(), price])
+                            del h[:-1500]
+            except Exception as e:
+                self.log("system", f"Hand-Trades: {e}", "warn")
+            self.stop_event.wait(20)
+
+    def manual_view(self):
+        out = []
+        rate = self.cfg.get("usd_pro_eur", 1)
+        exit_cost = (self.cfg["sniper"]["base_slippage_pct"] + self.cfg["sniper"]["fee_pct_per_side"]) / 100
+        for tr in self.manual_trades():
+            live = self.manual_live.get(tr["id"], {})
+            cost = tr.get("cost_usd") or tr["eur"] * rate
+            price = tr.get("exit_price") or live.get("price") or tr["entry_price"]
+            value = tr["qty"] * price * (1 - exit_cost)
+            out.append({"id": tr["id"], "symbol": tr["symbol"], "chain": tr["chain"], "token": tr["token"], "url": tr.get("url"),
+                        "opened_at": tr["opened_at"], "closed_at": tr.get("closed_at"), "cost_usd": cost, "value_usd": value,
+                        "pnl_usd": value - cost, "pnl_pct": (value / cost - 1) * 100, "entry_price": tr["entry_price"], "price": price,
+                        "peak_pct": ((live.get("peak") or price) / tr["entry_price"] - 1) * 100, "mcap": live.get("mcap"),
+                        "entry_mcap": tr.get("entry_mcap"), "liq": live.get("liq"), "price_ts": live.get("ts"), "note": tr.get("note"),
+                        "hist": downsample(live.get("hist") or [], 200)})
+        return out
 
     def market_loop(self):
         while not self.stop_event.is_set():
@@ -2200,7 +2252,7 @@ class Bot:
             self.stop_event.wait(self.cfg["risk_interval_s"])
 
     def start(self):
-        for fn in (self.scout_loop, self.risk_loop, self.market_loop, self.fomo_loop, self.stream_loop, self.chart_watch_loop, self.hot_loop, self.after_exit_loop,
+        for fn in (self.scout_loop, self.risk_loop, self.market_loop, self.manual_loop, self.fomo_loop, self.stream_loop, self.chart_watch_loop, self.hot_loop, self.after_exit_loop,
                    self.wallet_watch_loop):
             threading.Thread(target=fn, daemon=True).start()
         if os.environ.get("GITHUB_REPOSITORY") and os.environ.get("GITHUB_TOKEN") and self is self.family[0]:
@@ -2431,6 +2483,7 @@ class Bot:
                     "hot": [{"mint": m, "symbol": self.symbols.get(m), "buyers": b, "sellers": sl} for m, b, sl in self.fomo_hot(8)],
                 },
                 "equity_history": hist, "equity_ranges": ranges, "pf_hot": self.pf_hot_view,
+                "manual": self.manual_view(),
                 "safe": dict(self.reports(), market=self.market, block=self.entry_block() if self.cfg.get("desk", {}).get("enabled") else None,
                              stale=self.stale_sources(), loss_streak=self.loss_streak, pause_until=self.pause_until, day=self.day),
                 "desk": {"enabled": bool(self.cfg.get("desk", {}).get("enabled")), "kills": self.kill_log[-60:][::-1],

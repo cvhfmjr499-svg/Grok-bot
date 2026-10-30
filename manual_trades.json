@@ -1,0 +1,22 @@
+{
+  "_info": "Hand-Trades mit Spielgeld, getrennt vom Bot. Verkaufen: closed_at + exit_price eintragen.",
+  "trades": [
+    {
+      "id": "safu-1",
+      "symbol": "SAFU",
+      "name": "SAFU Fund",
+      "chain": "bsc",
+      "token": "0x7c907D1CE734B73e9236DCd06cefcB6346857777",
+      "pair": "0x20dA3Ebe08379117fDB7f15Ff55456813b546554",
+      "url": "https://dexscreener.com/bsc/0x20da3ebe08379117fdb7f15ff55456813b546554",
+      "eur": 100,
+      "opened_at": 1793368456.04695,
+      "entry_price": 0.00229704,
+      "market_price": 0.002252,
+      "qty": 48308.3011179605,
+      "entry_mcap": 2252647,
+      "note": "Von Hand gekauft (Spielgeld), 2 % Slippage + 0,3 % Gebühr eingerechnet. Bot-Regeln gelten hier nicht.",
+      "cost_usd": 111.3
+    }
+  ]
+}
