@@ -82,5 +82,14 @@
   "ts": 1793345876.9730792,
   "reason": "Soft-Rug-Alarm: Fake-Handel ($8.0 pro Trade bei 16724 Trades/1h) (Rug-Gefahr)",
   "pnl_pct": -1.9
+ },
+ "WBgfajLaoDToTrwtcBaxHk9TQ7eWM7x6YEBtsSkYHS5": {
+  "symbol": "JOB",
+  "name": "DogWifJob",
+  "token": "9Pq7aLAbhDG2tTnS22cm6kuysZVcZpLFE368HWuypump",
+  "chain": "solana",
+  "ts": 1793383788.1231663,
+  "reason": "Soft-Rug-Alarm: Dev verkauft (1.0% -> 0.0%) (Rug-Gefahr)",
+  "pnl_pct": -6.0
  }
 }
