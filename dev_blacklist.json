@@ -91,5 +91,13 @@
   "ts": 1793383788.1231663,
   "reason": "Soft-Rug-Alarm: Dev verkauft (1.0% -> 0.0%) (Rug-Gefahr)",
   "pnl_pct": -6.0
+ },
+ "H6KAJ89odHVqdUTMTxioH9BNLqrMtTfpTVWFw5vAwhYE": {
+  "symbol": "Leverhedge",
+  "name": "Leverhedge",
+  "token": "FWatMYieKhRuJ1yuTcmVG1njRhZWwqHwjR11pBympump",
+  "chain": "solana",
+  "ts": 1793474336.2032616,
+  "reason": "von dir (Handy) als Rug gemeldet"
  }
 }
