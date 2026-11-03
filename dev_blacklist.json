@@ -99,5 +99,14 @@
   "chain": "solana",
   "ts": 1793474336.2032616,
   "reason": "von dir (Handy) als Rug gemeldet"
+ },
+ "HN9YV4zbrsSjGwrLkr17ebbmCv99U34j7FuRcDtHjtZ9": {
+  "symbol": "SPHERE",
+  "name": "Project Sphere",
+  "token": "31SYoqWFhx3i9UsfnoXTjFp4ZwJA8F8UPrMxymfDpump",
+  "chain": "solana",
+  "ts": 1793701543.5890365,
+  "reason": "Soft-Rug-Alarm: Fake-Handel ($7.8 pro Trade bei 7779 Trades/1h) (Rug-Gefahr)",
+  "pnl_pct": 6.2
  }
 }
